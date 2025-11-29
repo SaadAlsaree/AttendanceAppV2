@@ -1,21 +1,31 @@
 using System.Collections.Concurrent;
 using System.Net;
+using Microsoft.Extensions.Options;
+using Web.Api.Configuration;
 
 namespace Web.Api.Middleware;
 
 /// <summary>
 /// Middleware for rate limiting to prevent DDoS attacks and excessive requests
 /// </summary>
-public sealed class RateLimitingMiddleware(RequestDelegate next, ILogger<RateLimitingMiddleware> logger)
+public sealed class RateLimitingMiddleware(
+    RequestDelegate next,
+    ILogger<RateLimitingMiddleware> logger,
+    IOptions<SecurityOptions> securityOptions)
 {
     private static readonly ConcurrentDictionary<string, ClientRequestInfo> _clients = new();
 
-    private const int MaxRequestsPerMinute = 200;
-    private const int MaxRequestsPerHour = 1000;
-    private const int BlockDurationMinutes = 5;
+    private readonly RateLimitingOptions _options = securityOptions.Value.RateLimiting;
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // Skip rate limiting if disabled
+        if (!_options.Enabled)
+        {
+            await next(context);
+            return;
+        }
+
         string clientId = GetClientIdentifier(context);
 
         if (IsRateLimited(clientId))
@@ -41,7 +51,7 @@ public sealed class RateLimitingMiddleware(RequestDelegate next, ILogger<RateLim
         return realIp ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 
-    private static bool IsRateLimited(string clientId)
+    private bool IsRateLimited(string clientId)
     {
         DateTime now = DateTime.UtcNow;
 
@@ -56,7 +66,7 @@ public sealed class RateLimitingMiddleware(RequestDelegate next, ILogger<RateLim
                 }
 
                 // Check if client is blocked
-                if (existing.IsBlocked && now.Subtract(existing.BlockedUntil).TotalMinutes < BlockDurationMinutes)
+                if (existing.IsBlocked && now.Subtract(existing.BlockedUntil).TotalMinutes < _options.BlockDurationMinutes)
                 {
                     return existing;
                 }
@@ -66,8 +76,8 @@ public sealed class RateLimitingMiddleware(RequestDelegate next, ILogger<RateLim
                 existing.LastRequest = now;
 
                 // Block if limits exceeded
-                if (existing.RequestCount > MaxRequestsPerHour ||
-                    now.Subtract(existing.LastRequest).TotalMinutes <= 1 && existing.RequestCount > MaxRequestsPerMinute)
+                if (existing.RequestCount > _options.MaxRequestsPerHour ||
+                    now.Subtract(existing.LastRequest).TotalMinutes <= 1 && existing.RequestCount > _options.MaxRequestsPerMinute)
                 {
                     existing.IsBlocked = true;
                     existing.BlockedUntil = now;
@@ -76,7 +86,7 @@ public sealed class RateLimitingMiddleware(RequestDelegate next, ILogger<RateLim
                 return existing;
             });
 
-        return clientInfo.IsBlocked && now.Subtract(clientInfo.BlockedUntil).TotalMinutes < BlockDurationMinutes;
+        return clientInfo.IsBlocked && now.Subtract(clientInfo.BlockedUntil).TotalMinutes < _options.BlockDurationMinutes;
     }
 
 

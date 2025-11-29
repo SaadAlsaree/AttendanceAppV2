@@ -15,7 +15,7 @@ public static class SecurityMiddlewareExtensions
         // Order is important - most restrictive first
         app.UseMiddleware<SecurityHeadersMiddleware>();
         app.UseMiddleware<SecurityLoggingMiddleware>();
-        //app.UseMiddleware<RateLimitingMiddleware>();
+        app.UseMiddleware<RateLimitingMiddleware>();
         app.UseMiddleware<IpBlockingMiddleware>();
         app.UseMiddleware<CsrfProtectionMiddleware>();
         //app.UseMiddleware<RequestValidationMiddleware>();
