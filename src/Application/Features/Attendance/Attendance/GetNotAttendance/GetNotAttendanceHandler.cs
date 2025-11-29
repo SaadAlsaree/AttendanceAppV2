@@ -1,39 +1,48 @@
-using Application.Abstractions.Authentication;
+﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
-using Domain.Entities.Attendance;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
-namespace Application.Attendance.Get;
+namespace Application.Features.Attendance.Attendance.GetNotAttendance;
 
-internal sealed class GetAttendanceQueryHandler(
+internal sealed class GetNotAttendanceHandler(
     IApplicationDbContext context,
     IHasPermission hasPermission,
     IUserContext userContext)
-    : IQueryHandler<GetAttendanceQuery, PaginatedResponse<AttendanceResponse>>
+    : IQueryHandler<GetNotAttendanceQuery, PaginatedResponse<GetNotAttendanceResponse>>
 {
-    public async Task<Result<PaginatedResponse<AttendanceResponse>>> Handle(GetAttendanceQuery query, CancellationToken cancellationToken)
+    public async Task<Result<PaginatedResponse<GetNotAttendanceResponse>>> Handle(GetNotAttendanceQuery query, CancellationToken cancellationToken)
     {
+        // Base query: attendance records where there is no check-in and no check-out (absence)
+        // Filter: EmpID is not null
+        // Exclude: records with AttendanceSchedule.Exceptions for that date
+        // Exclude: records where employee has an Approved Leave covering that date
         IQueryable<Domain.Entities.Attendance.Attendance> attendanceQuery = context.Attendances
-        .Where(a => a.CheckInTime.HasValue || a.CheckOutTime.HasValue)
+            .Where(a =>
+                !a.CheckInTime.HasValue &&
+                !a.CheckOutTime.HasValue &&
+                a.Employee.EmpID != null)
+            // Exclude if there's a ScheduleIssue (Exception) for this date in the AttendanceSchedule
+            .Where(a => a.AttendanceSchedule != null && a.AttendanceSchedule.ExcludedDates.Any())
+            .Where(a => a.Employee.Leaves.Any(l =>  l.StartDate <= a.Date && l.EndDate >= a.Date))
             .Include(a => a.Employee)
-            .ThenInclude(e => e.OrganizationalUnit)
+                .ThenInclude(e => e.OrganizationalUnit)
             .Include(a => a.Shift)
             .Include(a => a.AttendanceSchedule)
             .AsNoTracking();
 
-        // check if user role not Admin then apply accessible unit ids filter
+        // Apply permission filter for non-admin users
         UserInfoDto user = await userContext.GetUserAsync();
         if (user.Role != Role.Admin)
         {
             IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
-            attendanceQuery = attendanceQuery.Where(a => accessibleUnitIds.Contains(a.Employee.OrganizationalUnitId!.Value));
+            attendanceQuery = attendanceQuery.Where(a => a.Employee.OrganizationalUnitId.HasValue && accessibleUnitIds.Contains(a.Employee.OrganizationalUnitId.Value));
         }
 
-        // Apply filters
+        // Apply additional filters from query
         if (query.EmployeeId.HasValue)
         {
             attendanceQuery = attendanceQuery.Where(a => a.EmployeeId == query.EmployeeId);
@@ -60,7 +69,7 @@ internal sealed class GetAttendanceQueryHandler(
             attendanceQuery = attendanceQuery.Where(a => a.ShiftId == query.ShiftId);
         }
 
-        // Apply search
+        // Search term (employee name or code)
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))
         {
             attendanceQuery = attendanceQuery.Where(a =>
@@ -68,17 +77,14 @@ internal sealed class GetAttendanceQueryHandler(
                 EF.Functions.Like(a.Employee.Code, $"%{query.SearchTerm}%"));
         }
 
-        // Apply sorting
+        // Sorting
         if (!string.IsNullOrWhiteSpace(query.SortBy))
         {
             string? sortOrder = query.SortOrder?.ToUpperInvariant();
             bool isDescending = sortOrder == "DESC";
-
             attendanceQuery = query.SortBy.ToUpperInvariant() switch
             {
                 "date" => isDescending ? attendanceQuery.OrderByDescending(a => a.Date) : attendanceQuery.OrderBy(a => a.Date),
-                "checkintime" => isDescending ? attendanceQuery.OrderByDescending(a => a.CheckInTime) : attendanceQuery.OrderBy(a => a.CheckInTime),
-                "checkouttime" => isDescending ? attendanceQuery.OrderByDescending(a => a.CheckOutTime) : attendanceQuery.OrderBy(a => a.CheckOutTime),
                 "status" => isDescending ? attendanceQuery.OrderByDescending(a => a.Status) : attendanceQuery.OrderBy(a => a.Status),
                 "employeename" => isDescending ? attendanceQuery.OrderByDescending(a => a.Employee.FirstName) : attendanceQuery.OrderBy(a => a.Employee.FirstName),
                 "createdat" => isDescending ? attendanceQuery.OrderByDescending(a => a.CreatedAt) : attendanceQuery.OrderBy(a => a.CreatedAt),
@@ -90,32 +96,34 @@ internal sealed class GetAttendanceQueryHandler(
             attendanceQuery = attendanceQuery.OrderByDescending(a => a.Date);
         }
 
-        // Get total count
+        // Total count for pagination
         int totalCount = await attendanceQuery.CountAsync(cancellationToken);
 
-        // Apply pagination and get data
+        // Retrieve page data
         List<Domain.Entities.Attendance.Attendance> attendanceList = await attendanceQuery
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
             .ToListAsync(cancellationToken);
 
         // Get approved leaves that cover the attendance dates
-        List<Leave> relevantLeaves = await context.Leaves
+        List<Domain.Entities.Attendance.Leave> relevantLeaves = await context.Leaves
             .Where(l => l.Status == LeaveStatus.Approved &&
-                attendanceList.Any(a => 
+                attendanceList.Any(a =>
                     a.EmployeeId == l.EmployeeId &&
                     a.Date.Date >= l.StartDate.Date &&
                     a.Date.Date <= l.EndDate.Date))
             .ToListAsync(cancellationToken);
 
         // Create a dictionary for quick lookup: (EmployeeId, Date) -> Leave
-        var attendanceDates = attendanceList.Select(a => a.Date.Date).ToHashSet();
+        var attendanceKeys = attendanceList
+            .Select(a => (a.EmployeeId, a.Date.Date))
+            .ToHashSet();
         var leaveLookup = relevantLeaves
-            .SelectMany(l => 
+            .SelectMany(l =>
                 Enumerable.Range(0, (l.EndDate.Date - l.StartDate.Date).Days + 1)
                     .Select(offset => l.StartDate.Date.AddDays(offset))
                     .Select(date => new { Date = date, Leave = l }))
-            .Where(x => attendanceDates.Contains(x.Date))
+            .Where(x => attendanceKeys.Contains((x.Leave.EmployeeId, x.Date)))
             .GroupBy(x => (x.Leave.EmployeeId, x.Date))
             .ToDictionary(g => g.Key, g => g.First().Leave);
 
@@ -123,7 +131,7 @@ internal sealed class GetAttendanceQueryHandler(
         var attendances = attendanceList.Select(a =>
         {
             string? excludedDatesString = null;
-            
+
             // Get ExcludedDates from AttendanceSchedule if exists
             if (a.AttendanceSchedule is not null && a.AttendanceSchedule.ExcludedDates.Count > 0)
             {
@@ -132,9 +140,9 @@ internal sealed class GetAttendanceQueryHandler(
             }
 
             // Get Leave information if exists
-            leaveLookup.TryGetValue((a.EmployeeId, a.Date.Date), out Leave? leave);
+            leaveLookup.TryGetValue((a.EmployeeId, a.Date.Date), out Domain.Entities.Attendance.Leave? leave);
 
-            return new AttendanceResponse
+            return new GetNotAttendanceResponse
             {
                 Id = a.Id,
                 EmployeeId = a.EmployeeId,
@@ -161,17 +169,15 @@ internal sealed class GetAttendanceQueryHandler(
                 ExcludedDates = excludedDatesString,
                 LeaveType = leave?.LeaveType ?? default,
                 LeaveId = leave?.Id ?? Guid.Empty,
+                // Additional navigation properties
                 FullName = a.Employee.FullName,
                 Code = a.Employee.Code,
                 ShiftName = a.Shift?.Name,
-                ApproverName = null // Would need to join with Users table for approver name
+                ApproverName = null // Placeholder – could be joined with Users table
             };
         }).ToList();
 
-        return PaginatedResponse<AttendanceResponse>.Create(
-            attendances,
-            totalCount,
-            query.Page,
-            query.PageSize);
+        return PaginatedResponse<GetNotAttendanceResponse>.Create(attendances, totalCount, query.Page, query.PageSize);
     }
 }
+

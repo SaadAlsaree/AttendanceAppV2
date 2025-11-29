@@ -11,6 +11,7 @@ internal sealed class ChangePassword : IEndpoint
 {
     public sealed class Request
     {
+        public Guid UserId { get; set; }
         public string CurrentPassword { get; set; } = string.Empty;
         public string NewPassword { get; set; } = string.Empty;
         public string ConfirmPassword { get; set; } = string.Empty;
@@ -25,6 +26,7 @@ internal sealed class ChangePassword : IEndpoint
         {
             var command = new ChangePasswordCommand
             {
+                UserId = request.UserId,
                 CurrentPassword = request.CurrentPassword,
                 NewPassword = request.NewPassword,
                 ConfirmPassword = request.ConfirmPassword

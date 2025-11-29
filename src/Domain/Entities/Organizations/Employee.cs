@@ -36,5 +36,6 @@ public sealed class Employee : AuditableEntity<Guid>
 
     // Navigation Properties
     public List<Employee> Subordinates { get; set; } = new List<Employee>();
+    public List<Leave> Leaves { get; set; } = new List<Leave>();
     public List<OrganizationalUnit> ManagedUnits { get; set; } = new List<OrganizationalUnit>();
 }

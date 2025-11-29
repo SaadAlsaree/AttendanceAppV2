@@ -1,8 +1,8 @@
-using Domain.Enums;
+﻿using Domain.Enums;
 
-namespace Application.Attendance.Get;
+namespace Application.Features.Attendance.Attendance.GetNotAttendance;
 
-public sealed class AttendanceResponse
+public class GetNotAttendanceResponse
 {
     public Guid Id { get; set; }
     public Guid EmployeeId { get; set; }
@@ -26,12 +26,10 @@ public sealed class AttendanceResponse
     public Guid? AttendanceScheduleId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
-   
-    // Navigation properties
-
     public string? ExcludedDates { get; set; }
     public LeaveType LeaveType { get; set; }
     public Guid LeaveId { get; set; }
+    // Navigation properties
     public string? FullName { get; set; }
     public string? Code { get; set; }
     public string? ShiftName { get; set; }

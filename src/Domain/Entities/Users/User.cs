@@ -15,6 +15,7 @@ public sealed class User : AuditableEntity<Guid>
     public bool IsActive { get; set; } = true;
     public DateTime LastLoginDate { get; set; } = DateTime.Now;
     public UserStatus Status { get; set; } = UserStatus.Active;
+    public bool IsDefaultPassword { get; set; } = true;
 
     public Guid? OrganizationalUnitId { get; set; }
     public OrganizationalUnit? OrganizationalUnit { get; set; }

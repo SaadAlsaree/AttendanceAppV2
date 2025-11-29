@@ -1,4 +1,6 @@
+using System.Linq.Expressions;
 using Hangfire;
+using Hangfire.Common;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.BackgroundJobs;
@@ -9,10 +11,17 @@ namespace Infrastructure.BackgroundJobs;
 public class HangfireJobScheduler
 {
     private readonly ILogger<HangfireJobScheduler> _logger;
+    private readonly IRecurringJobManager _recurringJobManager;
+    private readonly IBackgroundJobClient _backgroundJobClient;
 
-    public HangfireJobScheduler(ILogger<HangfireJobScheduler> logger)
+    public HangfireJobScheduler(
+        ILogger<HangfireJobScheduler> logger,
+        IRecurringJobManager recurringJobManager,
+        IBackgroundJobClient backgroundJobClient)
     {
         _logger = logger;
+        _recurringJobManager = recurringJobManager;
+        _backgroundJobClient = backgroundJobClient;
     }
 
     /// <summary>
@@ -25,20 +34,22 @@ public class HangfireJobScheduler
             _logger.LogInformation("Scheduling recurring Hangfire jobs");
 
             // Fetch attendance data from devices - runs every 5 minutes
-            RecurringJob.AddOrUpdate<IFetchAttendanceDataJob>(
+            var fetchJob = Job.FromExpression<IFetchAttendanceDataJob>(job => job.FetchAndSaveAttendanceDataAsync());
+            _recurringJobManager.AddOrUpdate(
                 "fetch-attendance-data",
-                job => job.FetchAndSaveAttendanceDataAsync(),
-                "*/5 * * * *", // Cron: Every 5 minutes
+                fetchJob,
+                "*/5 * * * *",
                 new RecurringJobOptions
                 {
                     TimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Baghdad")
                 });
 
             // Create attendance records for all employees - runs every 5 minutes (after fetch job)
-            RecurringJob.AddOrUpdate<IAttendanceJob>(
+            var createAttendanceJob = Job.FromExpression<IAttendanceJob>(job => job.CreateAttendanceRecordsAsync());
+            _recurringJobManager.AddOrUpdate(
                 "create-attendance-records",
-                job => job.CreateAttendanceRecordsAsync(),
-                "*/5 * * * *", // Cron: Every 5 minutes
+                createAttendanceJob,
+                "*/5 * * * *",
                 new RecurringJobOptions
                 {
                     TimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Baghdad")
@@ -53,12 +64,13 @@ public class HangfireJobScheduler
             throw new ApplicationException(message, ex);
         }
     }
+
     /// <summary>
     /// Schedule a delayed job
     /// </summary>
-    public string ScheduleDelayedJob<T>(System.Linq.Expressions.Expression<Func<T, Task>> methodCall, TimeSpan delay)
+    public string ScheduleDelayedJob<T>(Expression<Func<T, Task>> methodCall, TimeSpan delay)
     {
-        string jobId = BackgroundJob.Schedule(methodCall, delay);
+        string jobId = _backgroundJobClient.Schedule(methodCall, delay);
         _logger.LogInformation("Scheduled delayed job {JobId} with delay {Delay}", jobId, delay);
         return jobId;
     }
