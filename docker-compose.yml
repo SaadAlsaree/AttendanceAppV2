@@ -1,0 +1,49 @@
+services:
+   web-api:
+      image: ${DOCKER_REGISTRY-}webapi
+      container_name: web-api
+      build:
+         context: .
+         dockerfile: src/Web.Api/Dockerfile
+      ports:
+         - 7000:8080
+         - 7001:8081
+
+   attendance-postgres:
+      image: postgres:17
+      container_name: attendance-postgres
+      environment:
+         - POSTGRES_DB=AttendanceDb
+         - POSTGRES_USER=postgres
+         - POSTGRES_PASSWORD=postgres
+      volumes:
+         - attendance_storage:/var/lib/postgresql/data
+      ports:
+         - 5435:5432
+
+   attendance-seq:
+      image: datalust/seq:2024.3
+      container_name: seq
+      environment:
+         - ACCEPT_EULA=Y
+      ports:
+         - 8081:80
+
+   attendance-redis:
+      image: redis:latest
+      container_name: attendance-redis
+      restart: always
+      ports:
+         - '6378:6379'
+
+   attendance-blob-storage:
+      image: mcr.microsoft.com/azure-storage/azurite:latest
+      container_name: attendance-blob-storage
+      volumes:
+         - attendance_storage:/data
+      ports:
+         - '10000:10000'
+      command: 'azurite-blob --blobHost 0.0.0.0 -l /data'
+
+volumes:
+   attendance_storage:

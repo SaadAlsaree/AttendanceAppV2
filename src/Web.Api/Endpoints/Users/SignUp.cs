@@ -1,0 +1,48 @@
+using Application.Abstractions.Messaging;
+using Application.Features.Users.SignUp;
+using Domain.Enums;
+using Microsoft.AspNetCore.Mvc;
+using SharedKernel;
+using Web.Api.Extensions;
+using Web.Api.Infrastructure;
+
+namespace Web.Api.Endpoints.Users;
+
+internal sealed class SignUp : IEndpoint
+{
+    public sealed class Request
+    {
+        public string Username { get; set; } = string.Empty;
+        public string UserLogin { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+        public Role Role { get; set; } = Role.User;
+        public Guid OrganizationalUnitId { get; set; }
+    }
+
+    public void MapEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("users/new", async (
+            [FromBody] Request request,
+            ICommandHandler<SignUpCommand, ApiResponse<SignUpResponse>> handler,
+            CancellationToken cancellationToken) =>
+        {
+            var command = new SignUpCommand(
+                request.Username,
+                request.UserLogin,
+                request.Password,
+                request.ConfirmPassword,
+                request.Role,
+                request.OrganizationalUnitId);
+
+            Result<ApiResponse<SignUpResponse>> result = await handler.Handle(command, cancellationToken);
+
+            return result.Match(
+                success => Results.Ok(success),
+                CustomResults.Problem
+            );
+        })
+        .WithTags(Tags.Users)
+        .AllowAnonymous();
+    }
+}
