@@ -6,6 +6,7 @@ public class GetNotAttendanceResponse
 {
     public Guid Id { get; set; }
     public Guid EmployeeId { get; set; }
+    public string? EmpID { get; set; }
     public Guid OrganizationId { get; set; }
     public string? OrganizationalName { get; set; }
     public DateTime Date { get; set; }

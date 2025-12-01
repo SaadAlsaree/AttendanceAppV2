@@ -12,12 +12,11 @@ internal sealed class GetOrganizationReport : IEndpoint
     public sealed class Request
     {
         public Guid OrganizationalUnitId { get; set; }
-        public DateTime? StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
+        public DateOnly? Date { get; set; }
         public Guid? ShiftId { get; set; }
         public bool IncludeSubUnits { get; set; } = true;
         public string? SearchTerm { get; set; }
-        public int Page { get; set; } = 1;
+        public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 10;
     }
 
@@ -31,12 +30,11 @@ internal sealed class GetOrganizationReport : IEndpoint
             var query = new GetOrganizationReportQuery
             {
                 OrganizationalUnitId = request.OrganizationalUnitId,
-                StartDate = request.StartDate,
-                EndDate = request.EndDate,
+                Date = request.Date,
                 ShiftId = request.ShiftId,
                 IncludeSubUnits = request.IncludeSubUnits,
                 SearchTerm = request.SearchTerm,
-                PageNumber = request.Page,
+                PageNumber = request.PageNumber,
                 PageSize = request.PageSize
             };
 

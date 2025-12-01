@@ -10,7 +10,7 @@ public sealed class GetNotAttendanceQuery : IQuery<PaginatedResponse<GetNotAtten
     public int PageSize { get; set; } = 10;
     public Guid? EmployeeId { get; set; }
     public Guid? OrganizationId { get; set; }
-    public DateTime? Date { get; set; }
+    public DateOnly? Date { get; set; }
     public AttendanceStatus? Status { get; set; }
     public Guid? ShiftId { get; set; }
     public string? SearchTerm { get; set; }

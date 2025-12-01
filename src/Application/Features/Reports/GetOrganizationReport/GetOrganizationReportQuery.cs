@@ -6,8 +6,7 @@ namespace Application.Features.Reports.GetOrganizationReport;
 public class GetOrganizationReportQuery : IQuery<ApiResponse<GetOrganizationReportVm>>
 {
     public Guid OrganizationalUnitId { get; set; }
-    public DateTime? StartDate { get; set; }
-    public DateTime? EndDate { get; set; }
+    public DateOnly? Date { get; set; }
     public Guid? ShiftId { get; set; }
     public bool IncludeSubUnits { get; set; } = true;
     public string? SearchTerm { get; set; }

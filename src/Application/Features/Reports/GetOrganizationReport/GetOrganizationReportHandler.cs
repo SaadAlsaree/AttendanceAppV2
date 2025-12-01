@@ -34,14 +34,9 @@ internal class GetOrganizationReportHandler(
                     Error.NotFound("OrganizationalUnit.NotFound", "الوحدة التنظيمية غير موجودة"));
             }
 
-            // Set date range with proper UTC conversion
-            DateTime startDate = query.StartDate.HasValue
-                ? dateTimeProvider.EnsureUtc(query.StartDate.Value.Date)
-                : dateTimeProvider.EnsureUtc(dateTimeProvider.GetCurrentLocalTime().Date);
-
-            DateTime endDate = query.EndDate.HasValue
-                ? dateTimeProvider.EnsureUtc(query.EndDate.Value.Date.AddDays(1).AddTicks(-1)) // End of day
-                : dateTimeProvider.EnsureUtc(dateTimeProvider.GetCurrentLocalTime().Date.AddDays(1).AddTicks(-1));
+            // Set date with proper UTC conversion
+            DateOnly reportDate = query.Date ?? DateOnly.FromDateTime(dateTimeProvider.GetCurrentLocalTime());
+            DateTime reportDateTime = dateTimeProvider.EnsureUtc(reportDate.ToDateTime(TimeOnly.MinValue));
 
             // Get target unit IDs (main unit + sub units if requested)
             List<Guid> targetUnitIds = new() { query.OrganizationalUnitId };
@@ -54,15 +49,14 @@ internal class GetOrganizationReportHandler(
             // Build the report
             GetOrganizationReportVm report = await BuildOrganizationReportAsync(
                 targetUnitIds,
-                startDate,
-                endDate,
+                reportDate,
                 query.ShiftId,
                 query.SearchTerm,
                 query.PageNumber,
                 query.PageSize,
                 cancellationToken);
 
-            report.Date = startDate;
+            report.Date = reportDateTime;
             report.GeneratedAt = dateTimeProvider.GetCurrentLocalTime();
 
             return Result.Success(new ApiResponse<GetOrganizationReportVm>
@@ -104,8 +98,7 @@ internal class GetOrganizationReportHandler(
 
     private async Task<GetOrganizationReportVm> BuildOrganizationReportAsync(
         List<Guid> unitIds,
-        DateTime startDate,
-        DateTime endDate,
+        DateOnly date,
         Guid? shiftId,
         string? searchTerm,
         int pageNumber,
@@ -131,14 +124,13 @@ internal class GetOrganizationReportHandler(
         // Get total employee count
         report.TotalEmployees = await employeesQuery.CountAsync(cancellationToken);
 
-        // Get attendance data for the date range
+        // Get attendance data for the specific date
         IQueryable<Domain.Entities.Attendance.Attendance> attendanceQuery = context.Attendances
             .AsNoTracking()
             .Include(a => a.Employee)
             .Include(a => a.Employee.OrganizationalUnit)
             .Where(a => unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
-                       a.Date >= startDate &&
-                       a.Date <= endDate &&
+                       DateOnly.FromDateTime(a.Date) == date &&
                        (a.CheckInTime != null || a.CheckOutTime != null));
 
         if (shiftId.HasValue)
@@ -156,10 +148,10 @@ internal class GetOrganizationReportHandler(
         report.TotalLate = attendances.Count(a => a.LateMinutes > 0);
         report.TotalOvertime = attendances.Count(a => a.OvertimeMinutes > 0);
 
-        // Get leave data
+        // Get leave data for the specific date
         int totalLeaves = await context.Leaves
-               .Where(l => l.StartDate.Date <= endDate.Date &&
-                          l.EndDate.Date >= endDate.Date &&
+               .Where(l => DateOnly.FromDateTime(l.StartDate) <= date &&
+                          DateOnly.FromDateTime(l.EndDate) >= date &&
                           unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
                .CountAsync(cancellationToken);
 

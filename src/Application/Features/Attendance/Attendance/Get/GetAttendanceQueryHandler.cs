@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
@@ -6,8 +8,6 @@ using Domain.Entities.Attendance;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
-using System.ComponentModel.DataAnnotations;
-using System.Reflection;
 
 namespace Application.Attendance.Get;
 
@@ -24,8 +24,7 @@ internal sealed class GetAttendanceQueryHandler(
             .Include(a => a.Employee)
             .ThenInclude(e => e.OrganizationalUnit)
             .Include(a => a.Shift)
-            .Include(a => a.AttendanceSchedule)
-            .AsNoTracking();
+            .Include(a => a.AttendanceSchedule);
 
         // check if user role not Admin then apply accessible unit ids filter
         UserInfoDto user = await userContext.GetUserAsync();
@@ -48,8 +47,8 @@ internal sealed class GetAttendanceQueryHandler(
 
         if (query.Date.HasValue)
         {
-            DateTime dateFilter = query.Date.Value.Date;
-            attendanceQuery = attendanceQuery.Where(a => a.Date == dateFilter);
+            DateOnly dateFilter = query.Date.Value;
+            attendanceQuery = attendanceQuery.Where(a => DateOnly.FromDateTime(a.Date) == dateFilter);
         }
 
         if (query.Status.HasValue)

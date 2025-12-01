@@ -28,8 +28,7 @@ internal sealed class GetNotAttendanceHandler(
             .Include(a => a.AttendanceSchedule)
             .Where(a =>
                 !a.CheckInTime.HasValue &&
-                !a.CheckOutTime.HasValue &&
-                a.Employee.EmpID != null)
+                !a.CheckOutTime.HasValue )
             .AsNoTracking();
 
         // Apply permission filter for non-admin users
@@ -53,8 +52,8 @@ internal sealed class GetNotAttendanceHandler(
 
         if (query.Date.HasValue)
         {
-            DateTime dateFilter = query.Date.Value.Date;
-            attendanceQuery = attendanceQuery.Where(a => a.Date == dateFilter);
+            DateOnly dateFilter = query.Date.Value;
+            attendanceQuery = attendanceQuery.Where(a => DateOnly.FromDateTime(a.Date) == dateFilter);
         }
 
         if (query.Status.HasValue)
@@ -119,6 +118,7 @@ internal sealed class GetNotAttendanceHandler(
             ? await context.Leaves
                 .Where(l =>
                     employeeIds.Contains(l.EmployeeId) &&
+                    l.Status == LeaveStatus.Approved &&
                     l.StartDate.Date <= maxDate &&
                     l.EndDate.Date >= minDate)
                 .ToListAsync(cancellationToken)
@@ -131,26 +131,28 @@ internal sealed class GetNotAttendanceHandler(
                 .Select(date => (l.EmployeeId, Date: date)))
             .ToHashSet();
 
-        // Filter out records where the date is in ExcludedDates or covered by an approved leave
+        // Filter to EXCLUDE records where:
+        // 1. The date is in ExcludedDates
+        // 2. There's an approved leave covering this date
         var filteredAttendances = allAttendances
             .Where(a =>
             {
-                // Exclude if the date is in ExcludedDates
-                if (a.AttendanceSchedule is not null)
-                {
-                    var attendanceDate = DateOnly.FromDateTime(a.Date);
-                    if (a.AttendanceSchedule.ExcludedDates.Contains(attendanceDate))
-                    {
-                        return false;
-                    }
-                }
-
+                var attendanceDate = DateOnly.FromDateTime(a.Date);
+                
                 // Exclude if there's an approved leave covering this date
                 if (leaveCoverageLookup.Contains((a.EmployeeId, a.Date.Date)))
                 {
                     return false;
                 }
 
+                // Exclude if the date is in ExcludedDates
+                if (a.AttendanceSchedule is not null && 
+                    a.AttendanceSchedule.ExcludedDates.Contains(attendanceDate))
+                {
+                    return false;
+                }
+
+                // Include all other records (no leave and not in ExcludedDates)
                 return true;
             })
             .ToList();
@@ -201,6 +203,7 @@ internal sealed class GetNotAttendanceHandler(
             {
                 Id = a.Id,
                 EmployeeId = a.EmployeeId,
+                EmpID = a.Employee.EmpID,
                 OrganizationId = a.OrganizationId,
                 OrganizationalName = a.Employee.OrganizationalUnit?.UnitName,
                 Date = a.Date,

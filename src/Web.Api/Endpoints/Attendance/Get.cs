@@ -15,7 +15,7 @@ internal sealed class Get : IEndpoint
         public int PageSize { get; set; } = 10;
         public Guid? EmployeeId { get; set; }
         public Guid? OrganizationId { get; set; }
-        public DateTime? Date { get; set; }
+        public DateOnly? Date { get; set; }
         public string? Status { get; set; }
         public Guid? ShiftId { get; set; }
         public string? SearchTerm { get; set; }
