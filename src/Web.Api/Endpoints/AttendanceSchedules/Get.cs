@@ -1,6 +1,7 @@
 using Application.Abstractions.Messaging;
 using Application.Attendance.AttendanceSchedules.Get;
 using Domain.Enums;
+using Infrastructure.Authentication;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -48,6 +49,25 @@ internal sealed class Get : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .WithTags(Tags.AttendanceSchedules)
-        .RequireAuthorization();
+         .RequireAuthorization(policy => policy
+     .RequireAssertion(context =>
+     {
+         if (context.User.Identity?.IsAuthenticated != true)
+         {
+             return false;
+         }
+
+         // الحصول على Role من JWT Token Claims
+         string? userRole = context.User.GetRole();
+
+         if (string.IsNullOrWhiteSpace(userRole))
+         {
+             return false;
+         }
+
+         // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin"];
+         return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
+     }));
     }
 }

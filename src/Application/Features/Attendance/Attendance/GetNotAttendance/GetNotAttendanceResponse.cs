@@ -28,6 +28,7 @@ public class GetNotAttendanceResponse
     public DateTime? UpdatedAt { get; set; }
     public string? ExcludedDates { get; set; }
     public LeaveType LeaveType { get; set; }
+    public string? LeaveTypeName { get; set; }
     public Guid LeaveId { get; set; }
     // Navigation properties
     public string? FullName { get; set; }

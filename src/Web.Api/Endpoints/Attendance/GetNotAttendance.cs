@@ -1,5 +1,6 @@
 using Application.Abstractions.Messaging;
-using Application.Attendance.Get;
+using Application.Features.Attendance.Attendance.GetNotAttendance;
+using Domain.Enums;
 using Infrastructure.Authentication;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -7,7 +8,7 @@ using Web.Api.Infrastructure;
 
 namespace Web.Api.Endpoints.Attendance;
 
-internal sealed class Get : IEndpoint
+internal sealed class GetNotAttendance : IEndpoint
 {
     public sealed class Request
     {
@@ -25,49 +26,50 @@ internal sealed class Get : IEndpoint
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("attendance", async (
+        app.MapGet("attendance/not-attendance", async (
             [AsParameters] Request request,
-            IQueryHandler<GetAttendanceQuery, PaginatedResponse<AttendanceResponse>> handler,
+            IQueryHandler<GetNotAttendanceQuery, PaginatedResponse<GetNotAttendanceResponse>> handler,
             CancellationToken cancellationToken) =>
         {
-            var query = new GetAttendanceQuery
+            var query = new GetNotAttendanceQuery
             {
                 Page = request.Page,
                 PageSize = request.PageSize,
                 EmployeeId = request.EmployeeId,
                 OrganizationId = request.OrganizationId,
                 Date = request.Date,
-                Status = request.Status != null ? Enum.Parse<Domain.Enums.AttendanceStatus>(request.Status) : null,
+                Status = request.Status != null ? Enum.Parse<AttendanceStatus>(request.Status) : null,
                 ShiftId = request.ShiftId,
                 SearchTerm = request.SearchTerm,
                 SortBy = request.SortBy,
                 SortOrder = request.SortOrder
             };
 
-            Result<PaginatedResponse<AttendanceResponse>> result = await handler.Handle(query, cancellationToken);
+            Result<PaginatedResponse<GetNotAttendanceResponse>> result = await handler.Handle(query, cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .WithTags(Tags.Attendance)
-         .RequireAuthorization(policy => policy
-     .RequireAssertion(context =>
-     {
-         if (context.User.Identity?.IsAuthenticated != true)
-         {
-             return false;
-         }
+        .RequireAuthorization(policy => policy
+            .RequireAssertion(context =>
+            {
+                if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    return false;
+                }
 
-         // الحصول على Role من JWT Token Claims
-         string? userRole = context.User.GetRole();
+                // الحصول على Role من JWT Token Claims
+                string? userRole = context.User.GetRole();
 
-         if (string.IsNullOrWhiteSpace(userRole))
-         {
-             return false;
-         }
+                if (string.IsNullOrWhiteSpace(userRole))
+                {
+                    return false;
+                }
 
-         // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin"];
-         return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
-     }));
+                // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
+                string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin"];
+                return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
+            }));
     }
 }
+

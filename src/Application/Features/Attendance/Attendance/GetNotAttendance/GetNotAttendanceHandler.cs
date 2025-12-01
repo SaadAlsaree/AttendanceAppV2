@@ -5,6 +5,8 @@ using Application.Models;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 
 namespace Application.Features.Attendance.Attendance.GetNotAttendance;
 
@@ -18,20 +20,16 @@ internal sealed class GetNotAttendanceHandler(
     {
         // Base query: attendance records where there is no check-in and no check-out (absence)
         // Filter: EmpID is not null
-        // Exclude: records with AttendanceSchedule.Exceptions for that date
-        // Exclude: records where employee has an Approved Leave covering that date
+        // Note: ExcludedDates and Leaves filtering will be done in memory after loading due to EF Core translation limitations
         IQueryable<Domain.Entities.Attendance.Attendance> attendanceQuery = context.Attendances
-            .Where(a =>
-                !a.CheckInTime.HasValue &&
-                !a.CheckOutTime.HasValue &&
-                a.Employee.EmpID != null)
-            // Exclude if there's a ScheduleIssue (Exception) for this date in the AttendanceSchedule
-            .Where(a => a.AttendanceSchedule != null && a.AttendanceSchedule.ExcludedDates.Any())
-            .Where(a => a.Employee.Leaves.Any(l =>  l.StartDate <= a.Date && l.EndDate >= a.Date))
             .Include(a => a.Employee)
                 .ThenInclude(e => e.OrganizationalUnit)
             .Include(a => a.Shift)
             .Include(a => a.AttendanceSchedule)
+            .Where(a =>
+                !a.CheckInTime.HasValue &&
+                !a.CheckOutTime.HasValue &&
+                a.Employee.EmpID != null)
             .AsNoTracking();
 
         // Apply permission filter for non-admin users
@@ -96,29 +94,86 @@ internal sealed class GetNotAttendanceHandler(
             attendanceQuery = attendanceQuery.OrderByDescending(a => a.Date);
         }
 
-        // Total count for pagination
-        int totalCount = await attendanceQuery.CountAsync(cancellationToken);
+        // Load all matching records (before ExcludedDates and Leaves filter)
+        // Note: We need to load all to filter ExcludedDates and Leaves in memory due to EF Core translation limitations
+        List<Domain.Entities.Attendance.Attendance> allAttendances = await attendanceQuery.ToListAsync(cancellationToken);
 
-        // Retrieve page data
-        List<Domain.Entities.Attendance.Attendance> attendanceList = await attendanceQuery
+        // If no records found, return empty result
+        if (allAttendances.Count == 0)
+        {
+            return PaginatedResponse<GetNotAttendanceResponse>.Create(
+                new List<GetNotAttendanceResponse>(),
+                0,
+                query.Page,
+                query.PageSize);
+        }
+
+        // Get all approved leaves that might cover any of the attendance dates
+        // Extract unique employee IDs and date range from attendance records
+        var employeeIds = allAttendances.Select(a => a.EmployeeId).Distinct().ToList();
+        DateTime minDate = allAttendances.Min(a => a.Date.Date);
+        DateTime maxDate = allAttendances.Max(a => a.Date.Date);
+
+        // Query approved leaves that could potentially cover any attendance date
+        List<Domain.Entities.Attendance.Leave> approvedLeaves = employeeIds.Count > 0
+            ? await context.Leaves
+                .Where(l =>
+                    employeeIds.Contains(l.EmployeeId) &&
+                    l.StartDate.Date <= maxDate &&
+                    l.EndDate.Date >= minDate)
+                .ToListAsync(cancellationToken)
+            : new List<Domain.Entities.Attendance.Leave>();
+
+        // Create a lookup for quick checking if a date is covered by an approved leave
+        var leaveCoverageLookup = approvedLeaves
+            .SelectMany(l => Enumerable.Range(0, (l.EndDate.Date - l.StartDate.Date).Days + 1)
+                .Select(offset => l.StartDate.Date.AddDays(offset))
+                .Select(date => (l.EmployeeId, Date: date)))
+            .ToHashSet();
+
+        // Filter out records where the date is in ExcludedDates or covered by an approved leave
+        var filteredAttendances = allAttendances
+            .Where(a =>
+            {
+                // Exclude if the date is in ExcludedDates
+                if (a.AttendanceSchedule is not null)
+                {
+                    var attendanceDate = DateOnly.FromDateTime(a.Date);
+                    if (a.AttendanceSchedule.ExcludedDates.Contains(attendanceDate))
+                    {
+                        return false;
+                    }
+                }
+
+                // Exclude if there's an approved leave covering this date
+                if (leaveCoverageLookup.Contains((a.EmployeeId, a.Date.Date)))
+                {
+                    return false;
+                }
+
+                return true;
+            })
+            .ToList();
+
+        // Total count after ExcludedDates filter
+        int totalCount = filteredAttendances.Count;
+
+        // Apply pagination
+        var attendanceList = filteredAttendances
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
-            .ToListAsync(cancellationToken);
-
-        // Get approved leaves that cover the attendance dates
-        List<Domain.Entities.Attendance.Leave> relevantLeaves = await context.Leaves
-            .Where(l => l.Status == LeaveStatus.Approved &&
-                attendanceList.Any(a =>
-                    a.EmployeeId == l.EmployeeId &&
-                    a.Date.Date >= l.StartDate.Date &&
-                    a.Date.Date <= l.EndDate.Date))
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         // Create a dictionary for quick lookup: (EmployeeId, Date) -> Leave
+        // Reuse the approvedLeaves we already loaded, filtered to only those covering the paginated attendance list
         var attendanceKeys = attendanceList
             .Select(a => (a.EmployeeId, a.Date.Date))
             .ToHashSet();
-        var leaveLookup = relevantLeaves
+        var leaveLookup = approvedLeaves
+            .Where(l => attendanceKeys.Any(ak =>
+                ak.EmployeeId == l.EmployeeId &&
+                ak.Date >= l.StartDate.Date &&
+                ak.Date <= l.EndDate.Date))
             .SelectMany(l =>
                 Enumerable.Range(0, (l.EndDate.Date - l.StartDate.Date).Days + 1)
                     .Select(offset => l.StartDate.Date.AddDays(offset))
@@ -168,6 +223,7 @@ internal sealed class GetNotAttendanceHandler(
                 UpdatedAt = a.LastUpdatedAt,
                 ExcludedDates = excludedDatesString,
                 LeaveType = leave?.LeaveType ?? default,
+                LeaveTypeName = leave is not null ? GetDisplayName(leave.LeaveType) : string.Empty,
                 LeaveId = leave?.Id ?? Guid.Empty,
                 // Additional navigation properties
                 FullName = a.Employee.FullName,
@@ -178,6 +234,13 @@ internal sealed class GetNotAttendanceHandler(
         }).ToList();
 
         return PaginatedResponse<GetNotAttendanceResponse>.Create(attendances, totalCount, query.Page, query.PageSize);
+    }
+
+    private static string GetDisplayName(LeaveType leaveType)
+    {
+        FieldInfo? field = leaveType.GetType().GetField(leaveType.ToString());
+        DisplayAttribute? displayAttribute = field?.GetCustomAttribute<DisplayAttribute>();
+        return displayAttribute?.Name ?? leaveType.ToString();
     }
 }
 

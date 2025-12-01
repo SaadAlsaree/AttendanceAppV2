@@ -6,6 +6,8 @@ using Domain.Entities.Attendance;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 
 namespace Application.Attendance.Get;
 
@@ -99,19 +101,33 @@ internal sealed class GetAttendanceQueryHandler(
             .Take(query.PageSize)
             .ToListAsync(cancellationToken);
 
+        // Early return if no attendance records found
+        if (attendanceList.Count == 0)
+        {
+            return PaginatedResponse<AttendanceResponse>.Create(
+                new List<AttendanceResponse>(),
+                totalCount,
+                query.Page,
+                query.PageSize);
+        }
+
+        // Extract employee IDs and dates for efficient leave querying
+        var employeeIds = attendanceList.Select(a => a.EmployeeId).ToHashSet();
+        var attendanceDates = attendanceList.Select(a => a.Date.Date).ToHashSet();
+        DateTime minDate = attendanceDates.Min();
+        DateTime maxDate = attendanceDates.Max();
+
         // Get approved leaves that cover the attendance dates
         List<Leave> relevantLeaves = await context.Leaves
-            .Where(l => l.Status == LeaveStatus.Approved &&
-                attendanceList.Any(a => 
-                    a.EmployeeId == l.EmployeeId &&
-                    a.Date.Date >= l.StartDate.Date &&
-                    a.Date.Date <= l.EndDate.Date))
+            .Where(l =>
+                employeeIds.Contains(l.EmployeeId) &&
+                l.StartDate.Date <= maxDate &&
+                l.EndDate.Date >= minDate)
             .ToListAsync(cancellationToken);
 
         // Create a dictionary for quick lookup: (EmployeeId, Date) -> Leave
-        var attendanceDates = attendanceList.Select(a => a.Date.Date).ToHashSet();
         var leaveLookup = relevantLeaves
-            .SelectMany(l => 
+            .SelectMany(l =>
                 Enumerable.Range(0, (l.EndDate.Date - l.StartDate.Date).Days + 1)
                     .Select(offset => l.StartDate.Date.AddDays(offset))
                     .Select(date => new { Date = date, Leave = l }))
@@ -123,7 +139,7 @@ internal sealed class GetAttendanceQueryHandler(
         var attendances = attendanceList.Select(a =>
         {
             string? excludedDatesString = null;
-            
+
             // Get ExcludedDates from AttendanceSchedule if exists
             if (a.AttendanceSchedule is not null && a.AttendanceSchedule.ExcludedDates.Count > 0)
             {
@@ -160,6 +176,7 @@ internal sealed class GetAttendanceQueryHandler(
                 UpdatedAt = a.LastUpdatedAt,
                 ExcludedDates = excludedDatesString,
                 LeaveType = leave?.LeaveType ?? default,
+                LeaveTypeName = leave is not null ? GetDisplayName(leave.LeaveType) : string.Empty,
                 LeaveId = leave?.Id ?? Guid.Empty,
                 FullName = a.Employee.FullName,
                 Code = a.Employee.Code,
@@ -173,5 +190,12 @@ internal sealed class GetAttendanceQueryHandler(
             totalCount,
             query.Page,
             query.PageSize);
+    }
+
+    private static string GetDisplayName(LeaveType leaveType)
+    {
+        FieldInfo? field = leaveType.GetType().GetField(leaveType.ToString());
+        DisplayAttribute? displayAttribute = field?.GetCustomAttribute<DisplayAttribute>();
+        return displayAttribute?.Name ?? leaveType.ToString();
     }
 }

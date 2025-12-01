@@ -1,6 +1,6 @@
 ﻿namespace Infrastructure.Authorization;
 
-internal sealed class PermissionProvider
+public sealed class PermissionProvider
 {
     public Task<HashSet<string>> GetForUserIdAsync(Guid userId)
     {

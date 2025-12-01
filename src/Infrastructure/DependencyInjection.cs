@@ -134,6 +134,7 @@ public static class DependencyInjection
         services.AddScoped<PermissionProvider>();
 
         services.AddTransient<IAuthorizationHandler, PermissionAuthorizationHandler>();
+        services.AddTransient<IAuthorizationHandler, MultiplePermissionsAuthorizationHandler>();
 
         // Register HttpClient for HikvisionService
         services.AddHttpClient<IHikvisionService, HikvisionService>(client =>

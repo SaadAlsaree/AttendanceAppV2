@@ -2,6 +2,7 @@ using System.Globalization;
 using Application.Abstractions.Messaging;
 using Application.Features.Organizations.Shifts.Create;
 using Domain.Enums;
+using Infrastructure.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -53,6 +54,25 @@ internal sealed class Create : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .WithTags(Tags.Shifts)
-        .RequireAuthorization();
+         .RequireAuthorization(policy => policy
+     .RequireAssertion(context =>
+     {
+         if (context.User.Identity?.IsAuthenticated != true)
+         {
+             return false;
+         }
+
+         // الحصول على Role من JWT Token Claims
+         string? userRole = context.User.GetRole();
+
+         if (string.IsNullOrWhiteSpace(userRole))
+         {
+             return false;
+         }
+
+         // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
+         string[] allowedRoles = ["Admin", "SuperAdmin"];
+         return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
+     }));
     }
 }

@@ -154,59 +154,64 @@ internal sealed class GetOrganizationalSummaryHandler(
 
     private async Task<UnitSummary> BuildUnitSummary(OrganizationalUnit unit, DateTime reportDate, CancellationToken cancellationToken)
     {
-        // إحصائيات الموظفين في الوحدة
+        // الحصول على جميع معرفات الوحدات الفرعية (بما في ذلك الوحدة نفسها)
+        List<Guid> unitIds = await GetUnitWithAllSubUnitsIds(unit.Id, cancellationToken);
+
+        // إحصائيات الموظفين في الوحدة والوحدات الفرعية
         int unitEmployees = await context.Employees
-            .Where(e => e.OrganizationalUnitId == unit.Id)
+            .Where(e => unitIds.Contains(e.OrganizationalUnitId ?? Guid.Empty))
             .CountAsync(cancellationToken);
 
-        // إحصائيات الحضور في الوحدة
+        // إحصائيات الحضور في الوحدة والوحدات الفرعية
         int unitAttendances = await context.Attendances
-            .Where(a => a.Date.Date == reportDate.Date && a.Employee.OrganizationalUnitId == unit.Id)
-            .Where(a => a.CheckInTime != null || a.CheckOutTime != null)
+            .Where(a => a.Date.Date == reportDate.Date &&
+                       unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                       (a.CheckInTime != null || a.CheckOutTime != null))
             .CountAsync(cancellationToken);
 
-        // إحصائيات الإجازات في الوحدة
+        // إحصائيات الإجازات في الوحدة والوحدات الفرعية
         int unitLeaves = await context.Leaves
             .Where(l => l.StartDate.Date <= reportDate.Date &&
                        l.EndDate.Date >= reportDate.Date &&
-                       l.Employee.OrganizationalUnitId == unit.Id)
+                       unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
             .CountAsync(cancellationToken);
 
         // عدد غير المبصمين الذين لديهم ShiftId لهذا اليوم
-        // جلب معرفات الموظفين في إجازة لهذا اليوم
+        // جلب معرفات الموظفين في إجازة لهذا اليوم في الوحدة والوحدات الفرعية
         List<Guid> employeesOnLeave = await context.Leaves
             .Where(l => l.StartDate.Date <= reportDate.Date &&
                        l.EndDate.Date >= reportDate.Date &&
-                       l.Employee.OrganizationalUnitId == unit.Id)
+                       unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
             .Select(l => l.EmployeeId)
             .ToListAsync(cancellationToken);
 
         int unitNotAttendances = await context.Attendances
             .Where(a => a.Date.Date == reportDate.Date &&
-                       a.Employee.OrganizationalUnitId == unit.Id &&
+                       unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                        a.ShiftId != null &&
                        a.CheckInTime == null &&
                        a.CheckOutTime == null &&
                        !employeesOnLeave.Contains(a.EmployeeId))
             .CountAsync(cancellationToken);
 
-        // إحصائيات التأخير في الوحدة
+        // إحصائيات التأخير في الوحدة والوحدات الفرعية
         int unitLate = await context.Attendances
             .Where(a => a.Date.Date == reportDate.Date &&
                        a.Status == AttendanceStatus.Late &&
-                       a.Employee.OrganizationalUnitId == unit.Id)
+                       unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                       (a.CheckInTime != null || a.CheckOutTime != null))
             .CountAsync(cancellationToken);
 
-        // إحصائيات العمل الإضافي في الوحدة
+        // إحصائيات العمل الإضافي في الوحدة والوحدات الفرعية
         int unitOvertime = await context.Attendances
             .Where(a => a.Date.Date == reportDate.Date &&
                        a.Status == AttendanceStatus.Overtime &&
-                       a.Employee.OrganizationalUnitId == unit.Id)
+                       unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                       (a.CheckInTime != null || a.CheckOutTime != null))
             .CountAsync(cancellationToken);
 
         // إحصائيات المناوبات في الوحدة
         int unitShifts = await context.Shifts
-
             .CountAsync(cancellationToken);
 
         // الحصول على اسم الوحدة الأب
@@ -233,5 +238,28 @@ internal sealed class GetOrganizationalSummaryHandler(
             TotalLeaves = unitLeaves,
             TotalOvertime = unitOvertime
         };
+    }
+
+    private async Task<List<Guid>> GetUnitWithAllSubUnitsIds(Guid unitId, CancellationToken cancellationToken)
+    {
+        List<OrganizationalUnit> allUnits = await context.OrganizationalUnits.ToListAsync(cancellationToken);
+        List<Guid> result = new();
+
+        void AddUnitAndChildren(Guid parentId)
+        {
+            OrganizationalUnit? unit = allUnits.FirstOrDefault(u => u.Id == parentId);
+            if (unit is not null)
+            {
+                result.Add(unit.Id);
+                var children = allUnits.Where(u => u.ParentUnitId == parentId).ToList();
+                foreach (OrganizationalUnit child in children)
+                {
+                    AddUnitAndChildren(child.Id);
+                }
+            }
+        }
+
+        AddUnitAndChildren(unitId);
+        return result;
     }
 }

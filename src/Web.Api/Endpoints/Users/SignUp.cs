@@ -1,6 +1,7 @@
 using Application.Abstractions.Messaging;
 using Application.Features.Users.SignUp;
 using Domain.Enums;
+using Infrastructure.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -43,6 +44,25 @@ internal sealed class SignUp : IEndpoint
             );
         })
         .WithTags(Tags.Users)
-        .AllowAnonymous();
+         .RequireAuthorization(policy => policy
+     .RequireAssertion(context =>
+     {
+         if (context.User.Identity?.IsAuthenticated != true)
+         {
+             return false;
+         }
+
+         // الحصول على Role من JWT Token Claims
+         string? userRole = context.User.GetRole();
+
+         if (string.IsNullOrWhiteSpace(userRole))
+         {
+             return false;
+         }
+
+         // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin"];
+         return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
+     }));
     }
 }

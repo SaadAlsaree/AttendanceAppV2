@@ -4,6 +4,7 @@ using Application.Attendance.AttendanceBreaks.Get;
 using SharedKernel;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
+using Infrastructure.Authentication;
 
 namespace Web.Api.Endpoints.AttendanceBreaks;
 
@@ -26,6 +27,25 @@ internal sealed class GetById : IEndpoint
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .WithTags(Tags.AttendanceBreaks)
-        .RequireAuthorization();
+        .RequireAuthorization(policy => policy
+     .RequireAssertion(context =>
+     {
+         if (context.User.Identity?.IsAuthenticated != true)
+         {
+             return false;
+         }
+
+         // الحصول على Role من JWT Token Claims
+         string? userRole = context.User.GetRole();
+
+         if (string.IsNullOrWhiteSpace(userRole))
+         {
+             return false;
+         }
+
+         // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin"];
+         return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
+     }));
     }
 }

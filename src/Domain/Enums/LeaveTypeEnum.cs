@@ -4,6 +4,8 @@ namespace Domain.Enums;
 
 public enum LeaveType
 {
+    [Display(Name = "لا يوجد")]
+    None = 0,
     [Display(Name = "إجازة أعتيادية")]
     Ordinary = 1,
     [Display(Name = "إجازة مرضية")]

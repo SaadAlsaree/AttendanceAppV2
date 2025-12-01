@@ -26,12 +26,13 @@ public sealed class AttendanceResponse
     public Guid? AttendanceScheduleId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
-   
+
     // Navigation properties
 
     public string? ExcludedDates { get; set; }
-    public LeaveType LeaveType { get; set; }
-    public Guid LeaveId { get; set; }
+    public LeaveType? LeaveType { get; set; }
+    public string? LeaveTypeName { get; set; }
+    public Guid? LeaveId { get; set; }
     public string? FullName { get; set; }
     public string? Code { get; set; }
     public string? ShiftName { get; set; }
