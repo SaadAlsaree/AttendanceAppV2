@@ -71,7 +71,7 @@ internal sealed class UpdateScheduleDays : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "SuperAdmin"];
+         string[] allowedRoles = ["Admin", "SuperAdmin", "Employee"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }));
     }

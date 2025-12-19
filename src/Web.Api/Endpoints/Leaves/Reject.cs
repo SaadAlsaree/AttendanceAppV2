@@ -55,7 +55,7 @@ internal sealed class Reject : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "SuperAdmin"];
+         string[] allowedRoles = ["Admin", "SuperAdmin", "Manager"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }));
     }

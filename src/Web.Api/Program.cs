@@ -31,7 +31,7 @@ builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
 
 builder.Services.AddCors(option =>
     option.AddPolicy("AllowAll", policy =>
-        policy.WithOrigins("http://localhost:3000", "http://192.168.141.156:3000", "http://fp28.inss.local", "http://fp28.inss.local:3000", "http://192.168.25.207:3000") // Add your Flutter app URL here
+        policy.WithOrigins("http://localhost:3000", "http://10.42.10.67:3000", "http://fp28.inss.local", "http://fp28.inss.local:3000", "http://192.168.25.207:3000") // Add your Flutter app URL here
               .AllowAnyHeader()
               .AllowAnyMethod()
     )
