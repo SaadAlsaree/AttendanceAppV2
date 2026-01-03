@@ -20,7 +20,9 @@ internal sealed class GetOrganizationalSummaryHandler(
         try
         {
             UserInfoDto user = await userContext.GetUserAsync();
-            DateTime reportDate = query.Date ?? dateTimeProvider.GetUtcNow().Date;
+            // Use provided date or default to the current local date (Today)
+            DateTime rawDate = query.Date ?? dateTimeProvider.GetUtcNow().AddDays(-1);
+            var reportDate = DateTime.SpecifyKind(rawDate, DateTimeKind.Utc);
             DateTime generatedAt = dateTimeProvider.GetUtcNow();
 
             // تحديد الوحدات المطلوبة
@@ -30,7 +32,7 @@ internal sealed class GetOrganizationalSummaryHandler(
                 if (query.IncludeSubUnits)
                 {
                     // الحصول على الوحدة وجميع الوحدات الفرعية
-                    units = await GetUnitWithSubUnits(user.OrganizationalUnitId ?? Guid.Empty, cancellationToken);
+                    units = await GetUnitWithSubUnits(user.OrganizationalUnitId ?? query.OrganizationalUnitId.Value, cancellationToken);
                 }
                 else
                 {
@@ -67,7 +69,7 @@ internal sealed class GetOrganizationalSummaryHandler(
             // عدد الحضور
             int totalAttendances = await context.Attendances
                 .Where(a => a.Date.Date == reportDate &&
-                           unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                           unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty) &&
                            (a.CheckInTime != null || a.CheckOutTime != null))
                 .CountAsync(cancellationToken);
 
@@ -75,7 +77,7 @@ internal sealed class GetOrganizationalSummaryHandler(
             int totalLeaves = await context.Leaves
                 .Where(l => l.StartDate.Date <= reportDate &&
                            l.EndDate.Date >= reportDate &&
-                           unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
+                           unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty))
                 .CountAsync(cancellationToken);
 
             int totalNotAttendances = totalEmployees - totalAttendances - totalLeaves;
@@ -84,7 +86,7 @@ internal sealed class GetOrganizationalSummaryHandler(
             int totalLate = await context.Attendances
                 .Where(a => a.Date.Date == reportDate &&
                            a.Status == AttendanceStatus.Late &&
-                           unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                           unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty) &&
                            (a.CheckInTime != null || a.CheckOutTime != null))
                 .CountAsync(cancellationToken);
 
@@ -92,7 +94,7 @@ internal sealed class GetOrganizationalSummaryHandler(
             int totalOvertime = await context.Attendances
             .Where(a => a.Date.Date == reportDate &&
                        a.Status == AttendanceStatus.Overtime &&
-                       unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                       unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty) &&
                        (a.CheckInTime != null || a.CheckOutTime != null))
             .CountAsync(cancellationToken);
 
@@ -166,29 +168,29 @@ internal sealed class GetOrganizationalSummaryHandler(
 
         // إحصائيات الحضور في الوحدة والوحدات الفرعية
         int unitAttendances = await context.Attendances
-            .Where(a => a.Date.Date == reportDate.Date &&
+            .Where(a => a.Date.Date == reportDate &&
                        unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                        (a.CheckInTime != null || a.CheckOutTime != null))
             .CountAsync(cancellationToken);
 
         // إحصائيات الإجازات في الوحدة والوحدات الفرعية
         int unitLeaves = await context.Leaves
-            .Where(l => l.StartDate.Date <= reportDate.Date &&
-                       l.EndDate.Date >= reportDate.Date &&
+            .Where(l => l.StartDate.Date <= reportDate &&
+                       l.EndDate.Date >= reportDate &&
                        unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
             .CountAsync(cancellationToken);
 
         // عدد غير المبصمين الذين لديهم ShiftId لهذا اليوم
         // جلب معرفات الموظفين في إجازة لهذا اليوم في الوحدة والوحدات الفرعية
         List<Guid> employeesOnLeave = await context.Leaves
-            .Where(l => l.StartDate.Date <= reportDate.Date &&
-                       l.EndDate.Date >= reportDate.Date &&
+            .Where(l => l.StartDate.Date <= reportDate &&
+                       l.EndDate.Date >= reportDate &&
                        unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
             .Select(l => l.EmployeeId)
             .ToListAsync(cancellationToken);
 
         int unitNotAttendances = await context.Attendances
-            .Where(a => a.Date.Date == reportDate.Date &&
+            .Where(a => a.Date.Date == reportDate &&
                        unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                        a.ShiftId != null &&
                        a.CheckInTime == null &&
@@ -198,7 +200,7 @@ internal sealed class GetOrganizationalSummaryHandler(
 
         // إحصائيات التأخير في الوحدة والوحدات الفرعية
         int unitLate = await context.Attendances
-            .Where(a => a.Date.Date == reportDate.Date &&
+            .Where(a => a.Date.Date == reportDate &&
                        a.Status == AttendanceStatus.Late &&
                        unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                        (a.CheckInTime != null || a.CheckOutTime != null))
@@ -206,7 +208,7 @@ internal sealed class GetOrganizationalSummaryHandler(
 
         // إحصائيات العمل الإضافي في الوحدة والوحدات الفرعية
         int unitOvertime = await context.Attendances
-            .Where(a => a.Date.Date == reportDate.Date &&
+            .Where(a => a.Date.Date == reportDate &&
                        a.Status == AttendanceStatus.Overtime &&
                        unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                        (a.CheckInTime != null || a.CheckOutTime != null))

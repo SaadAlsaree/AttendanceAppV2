@@ -1,12 +1,12 @@
-﻿using Application.Abstractions.Authentication;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Reflection;
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
-using System.ComponentModel.DataAnnotations;
-using System.Reflection;
 
 namespace Application.Features.Attendance.Attendance.GetNotAttendance;
 
@@ -28,7 +28,7 @@ internal sealed class GetNotAttendanceHandler(
             .Include(a => a.AttendanceSchedule)
             .Where(a =>
                 !a.CheckInTime.HasValue &&
-                !a.CheckOutTime.HasValue )
+                !a.CheckOutTime.HasValue)
             .AsNoTracking();
 
         // Apply permission filter for non-admin users
@@ -138,7 +138,7 @@ internal sealed class GetNotAttendanceHandler(
             .Where(a =>
             {
                 var attendanceDate = DateOnly.FromDateTime(a.Date);
-                
+
                 // Exclude if there's an approved leave covering this date
                 if (leaveCoverageLookup.Contains((a.EmployeeId, a.Date.Date)))
                 {
@@ -146,7 +146,7 @@ internal sealed class GetNotAttendanceHandler(
                 }
 
                 // Exclude if the date is in ExcludedDates
-                if (a.AttendanceSchedule is not null && 
+                if (a.AttendanceSchedule is not null &&
                     a.AttendanceSchedule.ExcludedDates.Contains(attendanceDate))
                 {
                     return false;

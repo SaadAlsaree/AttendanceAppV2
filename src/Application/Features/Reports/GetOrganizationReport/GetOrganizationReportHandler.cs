@@ -1,6 +1,7 @@
-﻿using Application.Abstractions.Data;
+﻿using Application.Abstractions.Authentication;
+using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
-using Domain.Entities.Attendance;
+using Application.Models;
 using Domain.Entities.Organizations;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -11,8 +12,8 @@ namespace Application.Features.Reports.GetOrganizationReport;
 internal class GetOrganizationReportHandler(
     IApplicationDbContext context,
     //IHasPermission hasPermission,
-    IDateTimeProvider dateTimeProvider
-    //IUserContext userContext 
+    IDateTimeProvider dateTimeProvider,
+    IUserContext userContext
     )
     : IQueryHandler<GetOrganizationReportQuery, ApiResponse<GetOrganizationReportVm>>
 {
@@ -21,12 +22,12 @@ internal class GetOrganizationReportHandler(
         try
         {
             // Get user info
-            //UserInfoDto user = await userContext.GetUserAsync();
+            UserInfoDto user = await userContext.GetUserAsync();
 
             // Validate organizational unit exists
             OrganizationalUnit? organizationalUnit = await context.OrganizationalUnits
                 .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == query.OrganizationalUnitId, cancellationToken);
+                .FirstOrDefaultAsync(u => u.Id == user.OrganizationalUnitId, cancellationToken);
 
             if (organizationalUnit is null)
             {
@@ -39,10 +40,10 @@ internal class GetOrganizationReportHandler(
             DateTime reportDateTime = dateTimeProvider.EnsureUtc(reportDate.ToDateTime(TimeOnly.MinValue));
 
             // Get target unit IDs (main unit + sub units if requested)
-            List<Guid> targetUnitIds = new() { query.OrganizationalUnitId };
+            List<Guid> targetUnitIds = new() { user.OrganizationalUnitId ?? Guid.Empty };
             if (query.IncludeSubUnits)
             {
-                List<Guid> subUnitIds = await GetSubUnitIdsRecursiveAsync(query.OrganizationalUnitId, cancellationToken);
+                List<Guid> subUnitIds = await GetSubUnitIdsRecursiveAsync(user.OrganizationalUnitId ?? Guid.Empty, cancellationToken);
                 targetUnitIds.AddRange(subUnitIds);
             }
 
