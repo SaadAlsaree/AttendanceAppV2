@@ -1,5 +1,7 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Models;
 using Domain.Entities.Organizations;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +11,7 @@ namespace Application.Features.Reports.GetOrganizationalSummary;
 
 internal sealed class GetOrganizationalSummaryHandler(
     IApplicationDbContext context,
+    IUserContext userContext,
     IDateTimeProvider dateTimeProvider)
     : IQueryHandler<GetOrganizationalSummaryQuery, ApiResponse<OrganizationalSummaryVm>>
 {
@@ -16,6 +19,7 @@ internal sealed class GetOrganizationalSummaryHandler(
     {
         try
         {
+            UserInfoDto user = await userContext.GetUserAsync();
             DateTime reportDate = query.Date ?? dateTimeProvider.GetUtcNow().Date;
             DateTime generatedAt = dateTimeProvider.GetUtcNow();
 
@@ -26,13 +30,13 @@ internal sealed class GetOrganizationalSummaryHandler(
                 if (query.IncludeSubUnits)
                 {
                     // الحصول على الوحدة وجميع الوحدات الفرعية
-                    units = await GetUnitWithSubUnits(query.OrganizationalUnitId.Value, cancellationToken);
+                    units = await GetUnitWithSubUnits(user.OrganizationalUnitId ?? Guid.Empty, cancellationToken);
                 }
                 else
                 {
                     // الحصول على الوحدة فقط
                     OrganizationalUnit? unit = await context.OrganizationalUnits
-                        .FirstOrDefaultAsync(u => u.Id == query.OrganizationalUnitId.Value, cancellationToken);
+                        .FirstOrDefaultAsync(u => u.Id == user.OrganizationalUnitId, cancellationToken);
                     if (unit is not null)
                     {
                         units.Add(unit);
@@ -58,9 +62,7 @@ internal sealed class GetOrganizationalSummaryHandler(
 
             // إحصائيات عامة
             // عدد الموظفين
-            int totalEmployees = await context.Employees
-                .Where(e => unitIds.Contains(e.OrganizationalUnitId ?? Guid.Empty))
-                .CountAsync(cancellationToken);
+            int totalEmployees = await context.Employees.CountAsync(cancellationToken);
 
             // عدد الحضور
             int totalAttendances = await context.Attendances
