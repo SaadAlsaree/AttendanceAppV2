@@ -106,12 +106,15 @@ internal class GetOrganizationReportHandler(
         int pageSize,
         CancellationToken cancellationToken)
     {
+
+        // Get user info
+        UserInfoDto user = await userContext.GetUserAsync();
         var report = new GetOrganizationReportVm();
 
         // Get all employees in target units
         IQueryable<Employee> employeesQuery = context.Employees
             .AsNoTracking()
-            .Where(e => unitIds.Contains(e.OrganizationalUnitId ?? Guid.Empty));
+            .Where(e => unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty));
 
         // Apply search filter
         if (!string.IsNullOrWhiteSpace(searchTerm))
