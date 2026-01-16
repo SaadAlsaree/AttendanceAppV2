@@ -62,6 +62,7 @@ internal sealed class GetAttendanceReport : IEndpoint
         .WithName("GetAttendanceReport")
         .WithSummary("تقرير الحضور الشامل")
         .WithDescription("تقرير شامل لإحصائيات الحضور والانصراف مع تفصيل الشفتات والوحدات الفرعية والإجازات")
-        .WithOpenApi();
+        .WithOpenApi()
+        .RequireRateLimiting("per-user");
     }
 }

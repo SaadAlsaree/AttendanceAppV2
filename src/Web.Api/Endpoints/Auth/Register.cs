@@ -105,6 +105,7 @@ internal sealed class Register : IEndpoint
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
          string[] allowedRoles = ["Admin", "SuperAdmin"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
-     }));
+     }))
+     .RequireRateLimiting("per-user");
     }
 }

@@ -4,6 +4,7 @@ using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
+using Domain.Entities.Attendance;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -50,11 +51,8 @@ internal sealed class GetNotAttendanceHandler(
             attendanceQuery = attendanceQuery.Where(a => a.OrganizationId == query.OrganizationId);
         }
 
-        if (query.Date.HasValue)
-        {
-            DateOnly dateFilter = query.Date.Value;
-            attendanceQuery = attendanceQuery.Where(a => DateOnly.FromDateTime(a.Date) == dateFilter);
-        }
+        DateOnly dateFilter = query.Date ?? DateOnly.FromDateTime(DateTime.Now);
+        attendanceQuery = attendanceQuery.Where(a => DateOnly.FromDateTime(a.Date) == dateFilter);
 
         if (query.Status.HasValue)
         {
@@ -118,7 +116,7 @@ internal sealed class GetNotAttendanceHandler(
             ? await context.Leaves
                 .Where(l =>
                     employeeIds.Contains(l.EmployeeId) &&
-                    l.Status == LeaveStatus.Approved &&
+                    // l.Status == LeaveStatus.Approved &&
                     l.StartDate.Date <= maxDate &&
                     l.EndDate.Date >= minDate)
                 .ToListAsync(cancellationToken)
@@ -134,6 +132,24 @@ internal sealed class GetNotAttendanceHandler(
         // Filter to EXCLUDE records where:
         // 1. The date is in ExcludedDates
         // 2. There's an approved leave covering this date
+        // Query active attendance schedules for the relevant employees and date range
+        var minDateOnly = DateOnly.FromDateTime(minDate);
+        var maxDateOnly = DateOnly.FromDateTime(maxDate);
+
+        List<AttendanceSchedule> activeSchedules = employeeIds.Count > 0
+            ? await context.AttendanceSchedules
+                .Where(s =>
+                    employeeIds.Contains(s.EmployeeId) &&
+                    s.IsActive &&
+                    !s.IsDeleted &&
+                    s.StartDate <= maxDateOnly &&
+                    (s.EndDate == null || s.EndDate >= minDateOnly))
+                .ToListAsync(cancellationToken)
+            : new List<AttendanceSchedule>();
+
+        // Filter to EXCLUDE records where:
+        // 1. The date is in ExcludedDates (checked against ALL active schedules for that employee)
+        // 2. There's an approved leave covering this date
         var filteredAttendances = allAttendances
             .Where(a =>
             {
@@ -145,9 +161,16 @@ internal sealed class GetNotAttendanceHandler(
                     return false;
                 }
 
-                // Exclude if the date is in ExcludedDates
-                if (a.AttendanceSchedule is not null &&
-                    a.AttendanceSchedule.ExcludedDates.Contains(attendanceDate))
+                // Exclude if the date is in ExcludedDates of ANY active schedule for this employee
+                // We check all active schedules because the attendance record might not be linked to the correct schedule
+                // or the link might be missing.
+                bool isExcluded = activeSchedules.Any(s =>
+                    s.EmployeeId == a.EmployeeId &&
+                    s.StartDate <= attendanceDate &&
+                    (s.EndDate == null || s.EndDate >= attendanceDate) &&
+                    s.ExcludedDates.Contains(attendanceDate));
+
+                if (isExcluded)
                 {
                     return false;
                 }

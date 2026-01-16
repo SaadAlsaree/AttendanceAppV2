@@ -1,5 +1,4 @@
 using FluentValidation;
-using Domain.Enums;
 
 namespace Application.Attendance.Leaves.Create;
 
@@ -22,10 +21,6 @@ public class CreateLeaveCommandValidator : AbstractValidator<CreateLeaveCommand>
         RuleFor(c => c.EndDate)
             .NotEmpty()
             .WithMessage("End date is required");
-
-        RuleFor(c => c.EndDate)
-            .GreaterThanOrEqualTo(c => c.StartDate)
-            .WithMessage("End date must be after or equal to start date");
 
         RuleFor(c => c.Reason)
             .NotEmpty()

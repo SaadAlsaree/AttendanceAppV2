@@ -54,12 +54,6 @@ internal sealed class CreateLeaveCommandHandler(
             return Result.Failure<Guid>(LeaveErrors.InvalidDateRange(command.StartDate, command.EndDate));
         }
 
-        // Check if start date is not in the past
-        if (startDateUtc.Date < dateTimeProvider.GetUtcNow().Date)
-        {
-            return Result.Failure<Guid>(LeaveErrors.StartDateInPast(command.StartDate));
-        }
-
         // Check for overlapping leave requests
         bool overlappingLeave = await context.Leaves
             .AsNoTracking()

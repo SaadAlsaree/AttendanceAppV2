@@ -20,7 +20,8 @@ public class Files : IEndpoint
                 CustomResults.Problem);
         })
         .WithTags("Files")
-        .DisableAntiforgery();
+        .DisableAntiforgery()
+        .RequireRateLimiting("fixed");
 
         app.MapGet("files/{fileId}", async (Guid fileId, IBlobService blobService) =>
         {
@@ -30,7 +31,8 @@ public class Files : IEndpoint
                 fileResponse => Results.File(fileResponse.Stream, fileResponse.ContentType),
                 CustomResults.Problem);
         })
-        .WithTags("Files");
+        .WithTags("Files")
+        .RequireRateLimiting("fixed");
 
         app.MapDelete("files/{fileId}", async (Guid fileId, IBlobService blobService) =>
         {
@@ -40,6 +42,7 @@ public class Files : IEndpoint
                 () => Results.NoContent(),
                 CustomResults.Problem);
         })
-        .WithTags("Files");
+        .WithTags("Files")
+        .RequireRateLimiting("fixed");
     }
 }

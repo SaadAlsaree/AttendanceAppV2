@@ -21,7 +21,10 @@ internal sealed class GetEmployeeByIdQueryHandler(
                 .ThenInclude(as_ => as_.Exceptions)
             .Include(e => e.AttendanceSchedules)
                 .ThenInclude(as_ => as_.ScheduleDays)
-            .Include(e => e.Attendances)
+            .Include(e => e.Attendances
+                .Where(a => a.CheckInTime != null || a.CheckOutTime != null)
+                .OrderByDescending(a => a.Date)
+                .Take(30))
                 .ThenInclude(a => a.Shift)
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == query.Id, cancellationToken);
@@ -66,28 +69,30 @@ internal sealed class GetEmployeeByIdQueryHandler(
                 }).ToList()
         } : new AttendanceScheduleDto();
 
-        var attendanceDtos = employee.Attendances.Select(a => new AttendanceDto
-        {
-            Id = a.Id,
-            EmployeeId = a.EmployeeId,
-            OrganizationId = a.OrganizationId,
-            Date = a.Date,
-            CheckInTime = a.CheckInTime,
-            CheckOutTime = a.CheckOutTime,
-            Status = a.Status,
-            ShiftId = a.ShiftId,
-            WorkingMinutes = a.WorkingMinutes,
-            BreakMinutes = a.BreakMinutes,
-            OvertimeMinutes = a.OvertimeMinutes,
-            LateMinutes = a.LateMinutes,
-            EarlyLeaveMinutes = a.EarlyLeaveMinutes,
-            Notes = a.Notes,
-            CheckInMethod = a.CheckInMethod,
-            CheckOutMethod = a.CheckOutMethod
-        })
-        .OrderBy(a => a.Date)
-        .Take(15)
-        .Where(a => a.CheckInTime.HasValue || a.CheckOutTime.HasValue).ToList();
+        var attendanceDtos = employee.Attendances
+            .OrderByDescending(a => a.Date)
+            .Take(30)
+            .Select(a => new AttendanceDto
+            {
+                Id = a.Id,
+                EmployeeId = a.EmployeeId,
+                OrganizationId = a.OrganizationId,
+                Date = a.Date,
+                CheckInTime = a.CheckInTime,
+                CheckOutTime = a.CheckOutTime,
+                Status = a.Status,
+                ShiftId = a.ShiftId,
+                WorkingMinutes = a.WorkingMinutes,
+                BreakMinutes = a.BreakMinutes,
+                OvertimeMinutes = a.OvertimeMinutes,
+                LateMinutes = a.LateMinutes,
+                EarlyLeaveMinutes = a.EarlyLeaveMinutes,
+                Notes = a.Notes,
+                CheckInMethod = a.CheckInMethod,
+                CheckOutMethod = a.CheckOutMethod
+            })
+            .OrderBy(a => a.Date)
+            .ToList();
 
         // حساب إحصائيات العمل
         // حساب عدد أيام العمل: جميع السجلات التي تحتوي على CheckInTime (الموظف كان حاضراً)

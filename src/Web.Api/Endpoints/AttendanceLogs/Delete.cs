@@ -42,6 +42,7 @@ internal sealed class Delete : IEndpoint
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
          string[] allowedRoles = ["SuperAdmin"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
-     }));
+     }))
+     .RequireRateLimiting("per-user");
     }
 }

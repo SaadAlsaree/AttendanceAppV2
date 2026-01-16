@@ -3,6 +3,7 @@ using Application.Abstractions.Messaging;
 using SharedKernel;
 
 namespace Application.Features.Reports.GetOrganizationReport;
+
 public class GetOrganizationReportQuery : IQuery<ApiResponse<GetOrganizationReportVm>>
 {
     public Guid OrganizationalUnitId { get; set; }

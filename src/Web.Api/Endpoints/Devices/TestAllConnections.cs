@@ -38,6 +38,7 @@ public class TestAllConnections : IEndpoint
          string[] allowedRoles = ["Admin", "SuperAdmin"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }))
-        .WithOpenApi();
+        .WithOpenApi()
+        .RequireRateLimiting("per-user");
     }
 }

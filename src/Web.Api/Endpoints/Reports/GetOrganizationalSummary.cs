@@ -58,6 +58,7 @@ internal sealed class GetOrganizationalSummary : IEndpoint
         .WithName("GetOrganizationalSummary")
         .WithSummary("الملخص التنظيمي")
         .WithDescription("ملخص مختصر للوحدات التنظيمية يتضمن عدد الموظفين والشفتات ومعدلات الحضور")
-        .WithOpenApi();
+        .WithOpenApi()
+        .RequireRateLimiting("per-user");
     }
 }

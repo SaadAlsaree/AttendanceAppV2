@@ -66,6 +66,7 @@ internal sealed class GetOrganizationReport : IEndpoint
         .WithName("GetOrganizationReport")
         .WithSummary("تقرير المؤسسة")
         .WithDescription("تقرير شامل للمؤسسة يتضمن إحصائيات الحضور والانصراف والموظفين مع تفصيل الوحدات التنظيمية")
-        .WithOpenApi();
+        .WithOpenApi()
+        .RequireRateLimiting("per-user");
     }
 }

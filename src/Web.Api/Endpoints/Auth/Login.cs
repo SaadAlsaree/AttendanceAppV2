@@ -35,6 +35,7 @@ internal sealed class Login : IEndpoint
             );
         })
         .WithTags(Tags.Auth)
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("fixed");
     }
 }

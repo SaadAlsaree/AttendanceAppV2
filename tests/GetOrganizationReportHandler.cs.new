@@ -1,0 +1,387 @@
+﻿using Application.Abstractions.Authentication;
+using Application.Abstractions.Data;
+using Application.Abstractions.Messaging;
+using Application.Models;
+using Domain.Entities.Organizations;
+using Domain.Enums;
+using Microsoft.EntityFrameworkCore;
+using SharedKernel;
+
+namespace Application.Features.Reports.GetOrganizationReport;
+
+internal class GetOrganizationReportHandler(
+    IApplicationDbContext context,
+    //IHasPermission hasPermission,
+    IDateTimeProvider dateTimeProvider,
+    IUserContext userContext
+    )
+    : IQueryHandler<GetOrganizationReportQuery, ApiResponse<GetOrganizationReportVm>>
+{
+    public async Task<Result<ApiResponse<GetOrganizationReportVm>>> Handle(GetOrganizationReportQuery query, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Get user info
+            UserInfoDto user = await userContext.GetUserAsync();
+
+            // Validate organizational unit exists
+            OrganizationalUnit? organizationalUnit = await context.OrganizationalUnits
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == user.OrganizationalUnitId, cancellationToken);
+
+            if (organizationalUnit is null)
+            {
+                return Result.Failure<ApiResponse<GetOrganizationReportVm>>(
+                    Error.NotFound("OrganizationalUnit.NotFound", "الوحدة التنظيمية غير موجودة"));
+            }
+
+            // Set date with proper UTC conversion
+            DateOnly reportDate = query.Date ?? DateOnly.FromDateTime(dateTimeProvider.GetCurrentLocalTime());
+            DateTime reportDateTime = dateTimeProvider.EnsureUtc(reportDate.ToDateTime(TimeOnly.MinValue));
+
+            // Get target unit IDs (main unit + sub units if requested)
+            List<Guid> targetUnitIds = new() { user.OrganizationalUnitId ?? Guid.Empty };
+            if (query.IncludeSubUnits)
+            {
+                List<Guid> subUnitIds = await GetSubUnitIdsRecursiveAsync(user.OrganizationalUnitId ?? Guid.Empty, cancellationToken);
+                targetUnitIds.AddRange(subUnitIds);
+            }
+
+            // Build the report
+            GetOrganizationReportVm report = await BuildOrganizationReportAsync(
+                targetUnitIds,
+                reportDate,
+                query.ShiftId,
+                query.SearchTerm,
+                query.PageNumber,
+                query.PageSize,
+                cancellationToken);
+
+            report.Date = reportDateTime;
+            report.GeneratedAt = dateTimeProvider.GetCurrentLocalTime();
+
+            return Result.Success(new ApiResponse<GetOrganizationReportVm>
+            {
+                Data = report,
+                Message = "تم إنشاء تقرير الجهة بنجاح",
+                IsSuccess = true
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<ApiResponse<GetOrganizationReportVm>>(
+                Error.Failure("Report.GenerationFailed", $"فشل في إنشاء التقرير: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// OPTIMIZED: Get all sub-unit IDs in a single database query instead of N+1 queries
+    /// </summary>
+    private async Task<List<Guid>> GetSubUnitIdsRecursiveAsync(Guid parentUnitId, CancellationToken cancellationToken)
+    {
+        // OPTIMIZED: Get ALL units in a single query
+        var allUnits = await context.OrganizationalUnits
+            .AsNoTracking()
+            .Select(u => new { u.Id, u.ParentUnitId })
+            .ToListAsync(cancellationToken);
+
+        // Build a dictionary for fast parent lookup: ParentId -> List of ChildIds
+        var unitsByParent = allUnits
+            .Where(u => u.ParentUnitId.HasValue)
+            .GroupBy(u => u.ParentUnitId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(u => u.Id).ToList());
+
+        // Recursively collect all child unit IDs in memory (no more database calls)
+        var result = new List<Guid>();
+        CollectChildUnitIds(parentUnitId, unitsByParent, result);
+        return result;
+    }
+
+    /// <summary>
+    /// Helper method to recursively collect child unit IDs from in-memory dictionary
+    /// </summary>
+    private void CollectChildUnitIds(Guid parentId, Dictionary<Guid, List<Guid>> unitsByParent, List<Guid> result)
+    {
+        if (!unitsByParent.TryGetValue(parentId, out List<Guid>? childIds))
+        {
+            return; // No children found
+        }
+
+        foreach (Guid childId in childIds)
+        {
+            result.Add(childId);
+            // Recursively collect grandchildren
+            CollectChildUnitIds(childId, unitsByParent, result);
+        }
+    }
+
+    private async Task<GetOrganizationReportVm> BuildOrganizationReportAsync(
+        List<Guid> unitIds,
+        DateOnly date,
+        Guid? shiftId,
+        string? searchTerm,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var report = new GetOrganizationReportVm();
+
+        // Get all employees in target units
+        IQueryable<Employee> employeesQuery = context.Employees
+            .AsNoTracking()
+            .Where(e => unitIds.Contains(e.OrganizationalUnitId ?? Guid.Empty));
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            employeesQuery = employeesQuery.Where(e =>
+                e.FullName.Contains(searchTerm) ||
+                //e.Code.Contains(searchTerm) ||
+                e.Email!.Contains(searchTerm));
+        }
+
+        // Get total employee count
+        report.TotalEmployees = await employeesQuery.CountAsync(cancellationToken);
+
+        // Get attendance data for the specific date
+        IQueryable<Domain.Entities.Attendance.Attendance> attendanceQuery = context.Attendances
+            .AsNoTracking()
+            .Include(a => a.Employee)
+            .Include(a => a.Employee.OrganizationalUnit)
+            .Where(a => unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                       DateOnly.FromDateTime(a.Date) == date &&
+                       (a.CheckInTime != null || a.CheckOutTime != null));
+
+        if (shiftId.HasValue)
+        {
+            attendanceQuery = attendanceQuery.Where(a => a.ShiftId == shiftId);
+        }
+
+        List<Domain.Entities.Attendance.Attendance> attendances = await attendanceQuery
+            .OrderBy(a => a.CheckInTime ?? a.Date)
+            .ToListAsync(cancellationToken);
+
+        // Calculate overall statistics
+        report.TotalAttendances = attendances.Count;
+        report.TotalNotAttendances = attendances.Count - report.TotalAttendances - report.TotalLeaves;
+        report.TotalLate = attendances.Count(a => a.LateMinutes > 0);
+        report.TotalOvertime = attendances.Count(a => a.OvertimeMinutes > 0);
+
+        // Get leave data for the specific date with employee details
+        List<Domain.Entities.Attendance.Leave> leaves = await context.Leaves
+            .AsNoTracking()
+            .Include(l => l.Employee)
+            .Include(l => l.Employee.OrganizationalUnit)
+            .Where(l => DateOnly.FromDateTime(l.StartDate) <= date &&
+                       DateOnly.FromDateTime(l.EndDate) >= date &&
+                       unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
+            .OrderBy(l => l.StartDate)
+            .ToListAsync(cancellationToken);
+
+        report.TotalLeaves = leaves.Count;
+
+        // Get attendance schedules with excluded dates
+        List<Domain.Entities.Attendance.AttendanceSchedule> attendanceSchedules = await context.AttendanceSchedules
+            .AsNoTracking()
+            .Include(s => s.Employee)
+            .Where(s => unitIds.Contains(s.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                       s.IsActive &&
+                       s.StartDate <= date &&
+                       (s.EndDate == null || s.EndDate >= date))
+            .ToListAsync(cancellationToken);
+
+        // Build unit summaries
+        await BuildUnitSummariesAsync(report, unitIds, date, attendances, leaves, attendanceSchedules, searchTerm, pageNumber, pageSize, cancellationToken);
+
+        return report;
+    }
+
+    private async Task BuildUnitSummariesAsync(
+        GetOrganizationReportVm report,
+        List<Guid> unitIds,
+        DateOnly date,
+        List<Domain.Entities.Attendance.Attendance> attendances,
+        List<Domain.Entities.Attendance.Leave> leaves,
+        List<Domain.Entities.Attendance.AttendanceSchedule> attendanceSchedules,
+        string? searchTerm,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        // Get organizational units with their details
+        List<OrganizationalUnit> units = await context.OrganizationalUnits
+            .AsNoTracking()
+            .Include(u => u.ParentUnit)
+            .Where(u => unitIds.Contains(u.Id))
+            .ToListAsync(cancellationToken);
+
+        // OPTIMIZED: Get all employees for all units in a single query
+        IQueryable<Employee> allEmployeesQuery = context.Employees
+            .AsNoTracking()
+            .Where(e => unitIds.Contains(e.OrganizationalUnitId ?? Guid.Empty));
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            allEmployeesQuery = allEmployeesQuery.Where(e =>
+                e.FullName.Contains(searchTerm) ||
+                e.Email!.Contains(searchTerm));
+        }
+
+        List<Employee> allEmployees = await allEmployeesQuery.ToListAsync(cancellationToken);
+
+        // Group employees by unit for fast lookup
+        var employeesByUnit = allEmployees
+            .GroupBy(e => e.OrganizationalUnitId ?? Guid.Empty)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (OrganizationalUnit unit in units)
+        {
+            var unitSummary = new UnitSummary
+            {
+                UnitId = unit.Id,
+                UnitName = unit.UnitName,
+                UnitCode = unit.UnitCode,
+                ParentUnitId = unit.ParentUnitId,
+                ParentUnitName = unit.ParentUnit?.UnitName
+            };
+
+            // Get employees for this unit from pre-loaded dictionary
+            List<Employee> unitEmployees = employeesByUnit.TryGetValue(unit.Id, out List<Employee>? employees)
+                ? employees
+                : new List<Employee>();
+
+            unitSummary.TotalEmployees = unitEmployees.Count;
+
+            // REMOVED: Querying all shifts without filtering is inefficient
+            // If you need shift count per unit, add proper filtering
+            unitSummary.TotalShifts = 0;
+
+            // Filter attendances for this unit
+            var unitAttendances = attendances
+                .Where(a => a.Employee.OrganizationalUnitId == unit.Id)
+                .ToList();
+
+            // Filter leaves for this unit
+            var unitLeaves = leaves
+                .Where(l => l.Employee.OrganizationalUnitId == unit.Id)
+                .ToList();
+
+            // Calculate unit statistics
+            unitSummary.TotalAttendances = unitAttendances.Count;
+            unitSummary.TotalLeaves = unitLeaves.Count;
+            unitSummary.TotalNotAttendances = unitSummary.TotalEmployees - unitSummary.TotalAttendances - unitSummary.TotalLeaves;
+            unitSummary.TotalLate = unitAttendances.Count(a => a.LateMinutes > 0);
+            unitSummary.TotalOvertime = unitAttendances.Count(a => a.OvertimeMinutes > 0);
+
+            // Apply pagination on the unit's employees
+            var paginatedEmployees = unitEmployees
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+
+            // Create a HashSet for faster lookup
+            var attendedEmployeeIds = unitAttendances.Select(a => a.EmployeeId).ToHashSet();
+            var leaveEmployeeIds = unitLeaves.Select(l => l.EmployeeId).ToHashSet();
+
+            // Build employee attendance details
+            foreach (Employee employee in paginatedEmployees)
+            {
+                var employeeAttendances = unitAttendances
+                    .Where(a => a.EmployeeId == employee.Id)
+                    .OrderBy(a => a.CheckInTime ?? a.Date)
+                    .ToList();
+
+                var employeeLeaves = unitLeaves
+                    .Where(l => l.EmployeeId == employee.Id)
+                    .OrderBy(l => l.StartDate)
+                    .ToList();
+
+                // Add attendance details
+                foreach (Domain.Entities.Attendance.Attendance attendance in employeeAttendances)
+                {
+                    var employeeDetail = new EmployeeAttendanceDetail
+                    {
+                        EmployeeId = employee.Id,
+                        EmployeeName = employee.FullName,
+                        //EmployeeCode = employee.Code,
+                        OrganizationalUnitId = unit.Id,
+                        OrganizationalUnitName = unit.UnitName,
+                        Date = attendance.Date,
+                        CheckInTime = attendance.CheckInTime,
+                        CheckOutTime = attendance.CheckOutTime,
+                        IsLate = attendance.LateMinutes > 0,
+                        IsEarlyLeave = attendance.EarlyLeaveMinutes > 0,
+                        IsOnLeave = attendance.Status == AttendanceStatus.Vacation,
+                        IsAbsent = attendance.Status == AttendanceStatus.Absent,
+                        OvertimeDuration = attendance.OvertimeMinutes.HasValue ? TimeSpan.FromMinutes(attendance.OvertimeMinutes.Value) : null
+                    };
+
+                    unitSummary.EmployeeDetails.Add(employeeDetail);
+                }
+
+                // Add leave details
+                foreach (Domain.Entities.Attendance.Leave leave in employeeLeaves)
+                {
+                    var leaveDetail = new EmployeeLeaveDetail
+                    {
+                        EmployeeId = employee.Id,
+                        EmployeeName = employee.FullName,
+                        //EmployeeCode = employee.Code,
+                        OrganizationalUnitId = unit.Id,
+                        OrganizationalUnitName = unit.UnitName,
+                        Date = leave.StartDate,
+                        CheckInTime = null,
+                        CheckOutTime = null,
+                        IsLate = false,
+                        IsEarlyLeave = false,
+                        IsOnLeave = true,
+                        IsAbsent = false,
+                        OvertimeDuration = null
+                    };
+
+                    unitSummary.EmployeeLeaveDetails.Add(leaveDetail);
+                }
+
+                // Add not attendance details (employees who didn't attend and are not on leave)
+                // Also check if the date is not in the excluded dates of their attendance schedule
+                if (!attendedEmployeeIds.Contains(employee.Id) && !leaveEmployeeIds.Contains(employee.Id))
+                {
+                    // Check if this date is excluded in the employee's attendance schedule
+                    var employeeSchedules = attendanceSchedules
+                        .Where(s => s.EmployeeId == employee.Id)
+                        .ToList();
+
+                    bool isDateExcluded = employeeSchedules.Any(s => s.ExcludedDates.Contains(date));
+
+                    // Only add to not attendance list if the date is not excluded
+                    if (!isDateExcluded)
+                    {
+                        var notAttendanceDetail = new EmployeeNotAttendanceDetail
+                        {
+                            EmployeeId = employee.Id,
+                            EmployeeName = employee.FullName,
+                            //EmployeeCode = employee.Code,
+                            OrganizationalUnitId = unit.Id,
+                            OrganizationalUnitName = unit.UnitName,
+                            Date = report.Date,
+                            CheckInTime = null,
+                            CheckOutTime = null,
+                            IsLate = false,
+                            IsEarlyLeave = false,
+                            IsOnLeave = false,
+                            IsAbsent = true,
+                            OvertimeDuration = null
+                        };
+
+                        unitSummary.EmployeeNotAttendanceDetails.Add(notAttendanceDetail);
+                    }
+                }
+            }
+
+            report.Units.Add(unitSummary);
+        }
+    }
+
+}

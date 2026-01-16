@@ -1,4 +1,5 @@
 ﻿namespace Application.Features.Reports.GetOrganizationReport;
+
 public class GetOrganizationReportVm
 {
     public DateTime Date { get; set; }
@@ -51,4 +52,3 @@ public sealed class EmployeeAttendanceDetail
     public bool IsAbsent { get; set; }
     public TimeSpan? OvertimeDuration { get; set; }
 }
-

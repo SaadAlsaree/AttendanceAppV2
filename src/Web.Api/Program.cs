@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
 using Application;
 using Hangfire;
 using Hangfire.Dashboard;
@@ -6,9 +8,9 @@ using HealthChecks.UI.Client;
 using Infrastructure;
 using Infrastructure.BackgroundJobs;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using Web.Api;
-using Web.Api.Endpoints.Security;
 using Web.Api.Extensions;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -37,6 +39,38 @@ builder.Services.AddCors(option =>
     )
 );
 
+builder.Services.AddRateLimiter(cfg =>
+{
+    cfg.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    cfg.AddFixedWindowLimiter(policyName: "fixed", options =>
+    {
+        options.PermitLimit = 5;
+        options.Window = TimeSpan.FromMinutes(1);
+
+    });
+
+    cfg.AddPolicy("per-user", httpContext =>
+    {
+        string? userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            return RateLimitPartition.GetTokenBucketLimiter(userId, _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 50,
+                TokensPerPeriod = 25,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1)
+            });
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter("anonymous", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1)
+        });
+    });
+});
+
 // Register anti-forgery services
 builder.Services.AddAntiforgery();
 
@@ -45,10 +79,7 @@ WebApplication app = builder.Build();
 app.MapEndpoints();
 
 // Add security test endpoints (only in development)
-if (app.Environment.IsDevelopment())
-{
-    app.MapSecurityTestEndpoints();
-}
+
 
 if (app.Environment.IsDevelopment())
 {
@@ -89,6 +120,8 @@ app.UseSecurityMiddleware();
 
 // REMARK: If you want to use Controllers, you'll need this.
 app.MapControllers();
+
+app.UseRateLimiter();
 
 // Schedule Hangfire recurring jobs
 using (IServiceScope scope = app.Services.CreateScope())
