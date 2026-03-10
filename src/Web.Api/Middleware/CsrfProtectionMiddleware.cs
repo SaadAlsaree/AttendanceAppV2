@@ -149,7 +149,7 @@ public sealed class CsrfProtectionMiddleware(RequestDelegate next, ILogger<CsrfP
             // Add token to response headers for JavaScript access
             context.Response.Headers.Append("X-CSRF-Token", token);
 
-            logger.LogDebug("CSRF token generated for IP: {ClientIp}", GetClientIp(context));
+            //logger.LogDebug("CSRF token generated for IP: {ClientIp}", GetClientIp(context));
         }
         catch (Exception ex)
         {

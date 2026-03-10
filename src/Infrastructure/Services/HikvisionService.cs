@@ -153,9 +153,9 @@ internal sealed class HikvisionService : IHikvisionService
             {
                 AccessLogSearchResult? accessLogResult = JsonSerializer.Deserialize<AccessLogSearchResult>(content, _jsonOptions);
 
-                _logger.LogInformation("تم جلب {EventCount} حدث من الجهاز {DeviceId}",
-                    accessLogResult?.AcsEvent?.InfoList?.Count ?? 0,
-                    device.SerialNumber ?? device.DeviceId);
+                //_logger.LogInformation("تم جلب {EventCount} حدث من الجهاز {DeviceId}",
+                //    accessLogResult?.AcsEvent?.InfoList?.Count ?? 0,
+                //    device.SerialNumber ?? device.DeviceId);
 
                 return accessLogResult;
             }
@@ -271,7 +271,7 @@ internal sealed class HikvisionService : IHikvisionService
 
             // محاولة الاتصال مع المصادقة
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            _logger.LogInformation("إنشاء طلب للجهاز {DeviceId} على {Url}", device.SerialNumber ?? device.DeviceId, url);
+            //_logger.LogInformation("إنشاء طلب للجهاز {DeviceId} على {Url}", device.SerialNumber ?? device.DeviceId, url);
 
             // إعداد المصادقة
             bool authSuccess = await SetDigestAuthenticationAsync(request, "GET", "/ISAPI/System/deviceInfo", device.Username, device.Password);
@@ -285,7 +285,7 @@ internal sealed class HikvisionService : IHikvisionService
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("تم الاتصال بالجهاز {DeviceId} بنجاح", device.SerialNumber ?? device.DeviceId);
+                //_logger.LogInformation("تم الاتصال بالجهاز {DeviceId} بنجاح", device.SerialNumber ?? device.DeviceId);
                 return CreateDeviceStatus(device, "متصل", true, content);
             }
             else

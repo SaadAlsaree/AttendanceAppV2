@@ -261,9 +261,9 @@ public sealed class SqlInjectionProtectionMiddleware(RequestDelegate next, ILogg
             clientIp, location, context.Request.Path);
 
         // Log additional details for forensics
-        logger.LogInformation("SQL injection attempt details - User-Agent: {UserAgent}, Referer: {Referer}",
-            context.Request.Headers.UserAgent.ToString(),
-            context.Request.Headers.Referer.ToString());
+        //logger.LogInformation("SQL injection attempt details - User-Agent: {UserAgent}, Referer: {Referer}",
+        //    context.Request.Headers.UserAgent.ToString(),
+        //    context.Request.Headers.Referer.ToString());
 
         context.Response.StatusCode = 403; // Forbidden
         context.Response.ContentType = "application/json";

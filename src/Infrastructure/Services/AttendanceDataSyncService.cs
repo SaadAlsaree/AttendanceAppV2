@@ -43,7 +43,7 @@ internal sealed class AttendanceDataSyncService(
             var fromDateOnly = DateOnly.FromDateTime(sevenDaysAgoStart);
             var toDateOnly = DateOnly.FromDateTime(todayEnd);
 
-            logger.LogInformation("Fetching attendance data for today: {FromDate} to {ToDate}", fromDateOnly, toDateOnly);
+            //logger.LogInformation("Fetching attendance data for today: {FromDate} to {ToDate}", fromDateOnly, toDateOnly);
 
             // 2. جلب الأحداث من قاعدة البيانات الخارجية
             List<EventTab> events = await FetchEventsFromExternalDatabaseAsync(fromDateOnly, toDateOnly);
@@ -57,7 +57,7 @@ internal sealed class AttendanceDataSyncService(
                 return result;
             }
 
-            logger.LogInformation("Fetched {Count} attendance events, processing with validation and bulk insert...", events.Count);
+            //logger.LogInformation("Fetched {Count} attendance events, processing with validation and bulk insert...", events.Count);
 
             // 3. التحقق من البيانات وتحويلها إلى سجلات حضور
             DateTime currentTimeUtc = DateTime.UtcNow;
@@ -72,7 +72,7 @@ internal sealed class AttendanceDataSyncService(
                     {
                         result.RecordsSkipped++;
                         result.Warnings.Add($"Skipped event with empty EmpID at {eventData.DateTimeAttend}");
-                        logger.LogDebug("Skipped event with empty EmpID at {DateTime}", eventData.DateTimeAttend);
+                        //logger.LogDebug("Skipped event with empty EmpID at {DateTime}", eventData.DateTimeAttend);
                         continue;
                     }
 
@@ -88,8 +88,8 @@ internal sealed class AttendanceDataSyncService(
                     if (isDuplicate)
                     {
                         result.RecordsSkipped++;
-                        logger.LogDebug("Skipped duplicate log for Employee {EmpID} at {DateTime} on Device {DeviceNo}",
-                            eventData.EmpID, dateTimeAttendUtc, deviceNo);
+                        //logger.LogDebug("Skipped duplicate log for Employee {EmpID} at {DateTime} on Device {DeviceNo}",
+                        //    eventData.EmpID, dateTimeAttendUtc, deviceNo);
                         continue;
                     }
 
@@ -161,8 +161,8 @@ internal sealed class AttendanceDataSyncService(
 
                     totalProcessed += batch.Count;
                     result.RecordsProcessedSuccessfully += batch.Count;
-                    logger.LogDebug("Processed batch {BatchNumber}, total processed: {TotalProcessed}/{Total}",
-                        i / batchSize + 1, totalProcessed, validLogs.Count);
+                    //logger.LogDebug("Processed batch {BatchNumber}, total processed: {TotalProcessed}/{Total}",
+                    //    i / batchSize + 1, totalProcessed, validLogs.Count);
                 }
                 catch (Exception ex)
                 {
@@ -181,12 +181,12 @@ internal sealed class AttendanceDataSyncService(
             result.Success = true;
             result.SyncCompletedAt = DateTime.UtcNow;
 
-            logger.LogInformation(
-                "Sync completed successfully. Fetched: {Fetched}, Processed: {Processed}, Failed: {Failed}, Skipped: {Skipped}",
-                result.TotalRecordsFetched,
-                result.RecordsProcessedSuccessfully,
-                result.RecordsFailed,
-                result.RecordsSkipped);
+            //logger.LogInformation(
+            //    "Sync completed successfully. Fetched: {Fetched}, Processed: {Processed}, Failed: {Failed}, Skipped: {Skipped}",
+            //    result.TotalRecordsFetched,
+            //    result.RecordsProcessedSuccessfully,
+            //    result.RecordsFailed,
+            //    result.RecordsSkipped);
 
             return result;
         }
@@ -229,8 +229,8 @@ internal sealed class AttendanceDataSyncService(
                 .Select(g => g.OrderByDescending(e => e.DateTimeAttend).First())
                 .ToList();
 
-            logger.LogInformation("Fetched {TotalCount} events, after deduplication: {UniqueCount} unique records (EmpID + DateWork + Direct)",
-                events.Count, result.Count);
+            //logger.LogInformation("Fetched {TotalCount} events, after deduplication: {UniqueCount} unique records (EmpID + DateWork + Direct)",
+            //    events.Count, result.Count);
 
             return result;
         }
@@ -256,7 +256,7 @@ internal sealed class AttendanceDataSyncService(
 
             if (lastSyncTime.HasValue)
             {
-                logger.LogInformation("Last successful sync time: {LastSyncTime}", lastSyncTime.Value);
+                //logger.LogInformation("Last successful sync time: {LastSyncTime}", lastSyncTime.Value);
             }
             else
             {

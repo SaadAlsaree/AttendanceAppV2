@@ -1,7 +1,6 @@
 using Application.Abstractions.Messaging;
 using Application.Features.Users.GetById;
 using Infrastructure.Authentication;
-using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
@@ -44,7 +43,7 @@ internal sealed class GetById : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin"];
+         string[] allowedRoles = ["Admin", "SuperAdmin"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }))
      .RequireRateLimiting("per-user");

@@ -71,7 +71,7 @@ public class HangfireJobScheduler
     public string ScheduleDelayedJob<T>(Expression<Func<T, Task>> methodCall, TimeSpan delay)
     {
         string jobId = _backgroundJobClient.Schedule(methodCall, delay);
-        _logger.LogInformation("Scheduled delayed job {JobId} with delay {Delay}", jobId, delay);
+        //_logger.LogInformation("Scheduled delayed job {JobId} with delay {Delay}", jobId, delay);
         return jobId;
     }
 }

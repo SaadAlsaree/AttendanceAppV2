@@ -1,4 +1,3 @@
-using Hangfire;
 using Infrastructure.Services.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -22,9 +21,9 @@ internal sealed class FetchAttendanceDataJob(
 
             if (result.Success)
             {
-                logger.LogInformation(
-                    "Attendance data fetch job completed successfully. {Result}",
-                    result.ToString());
+                //logger.LogInformation(
+                //    "Attendance data fetch job completed successfully. {Result}",
+                //    result.ToString());
             }
             else
             {

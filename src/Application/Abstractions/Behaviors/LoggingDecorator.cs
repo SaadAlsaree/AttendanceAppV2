@@ -17,13 +17,13 @@ internal static class LoggingDecorator
         {
             string commandName = typeof(TCommand).Name;
 
-            logger.LogInformation("Processing command {Command}", commandName);
+            //logger.LogInformation("Processing command {Command}", commandName);
 
             Result<TResponse> result = await innerHandler.Handle(command, cancellationToken);
 
             if (result.IsSuccess)
             {
-                logger.LogInformation("Completed command {Command}", commandName);
+                //logger.LogInformation("Completed command {Command}", commandName);
             }
             else
             {
@@ -47,13 +47,13 @@ internal static class LoggingDecorator
         {
             string commandName = typeof(TCommand).Name;
 
-            logger.LogInformation("Processing command {Command}", commandName);
+            //logger.LogInformation("Processing command {Command}", commandName);
 
             Result result = await innerHandler.Handle(command, cancellationToken);
 
             if (result.IsSuccess)
             {
-                logger.LogInformation("Completed command {Command}", commandName);
+                //logger.LogInformation("Completed command {Command}", commandName);
             }
             else
             {
@@ -77,13 +77,13 @@ internal static class LoggingDecorator
         {
             string queryName = typeof(TQuery).Name;
 
-            logger.LogInformation("Processing query {Query}", queryName);
+            //logger.LogInformation("Processing query {Query}", queryName);
 
             Result<TResponse> result = await innerHandler.Handle(query, cancellationToken);
 
             if (result.IsSuccess)
             {
-                logger.LogInformation("Completed query {Query}", queryName);
+                //logger.LogInformation("Completed query {Query}", queryName);
             }
             else
             {

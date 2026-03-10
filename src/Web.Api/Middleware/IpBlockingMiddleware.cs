@@ -150,7 +150,7 @@ public sealed class IpBlockingMiddleware(RequestDelegate next, ILogger<IpBlockin
             _ = Task.Delay(TimeSpan.FromHours(BlockDurationHours)).ContinueWith(_ =>
             {
                 _blockedIps.Remove(clientIp);
-                logger.LogInformation("IP unblocked after timeout: {ClientIp}", clientIp);
+                //logger.LogInformation("IP unblocked after timeout: {ClientIp}", clientIp);
             }, TaskScheduler.Default);
         }
 

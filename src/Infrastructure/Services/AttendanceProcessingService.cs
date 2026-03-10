@@ -36,7 +36,7 @@ internal sealed class AttendanceProcessingService(
 
             if (employees.Count == 0)
             {
-                logger.LogInformation("No employees found to create attendance records for {Date}", today);
+                //logger.LogInformation("No employees found to create attendance records for {Date}", today);
                 return;
             }
 
@@ -142,8 +142,8 @@ internal sealed class AttendanceProcessingService(
                             ScheduleIssue exception = exceptions[0];
                             shiftId = exception.ShiftId;
 
-                            logger.LogDebug("Using exception shift {ShiftId} for employee {EmployeeId} on {Date}",
-                                shiftId, employee.Id, today);
+                            //logger.LogDebug("Using exception shift {ShiftId} for employee {EmployeeId} on {Date}",
+                            //    shiftId, employee.Id, today);
                         }
                         // Otherwise, check for schedule day
                         else if (scheduleDaysByScheduleId.TryGetValue(attendanceSchedule.Id, out List<ScheduleDay>? scheduleDays) &&
@@ -152,8 +152,8 @@ internal sealed class AttendanceProcessingService(
                             ScheduleDay scheduleDay = scheduleDays[0];
                             shiftId = scheduleDay.ShiftId;
 
-                            logger.LogDebug("Using schedule day shift {ShiftId} for employee {EmployeeId} on {Date}",
-                                shiftId, employee.Id, today);
+                            //logger.LogDebug("Using schedule day shift {ShiftId} for employee {EmployeeId} on {Date}",
+                            //    shiftId, employee.Id, today);
                         }
                         else
                         {
@@ -183,7 +183,7 @@ internal sealed class AttendanceProcessingService(
                 await context.SaveChangesAsync();
             }
 
-            logger.LogInformation("Attendance records created successfully for all employees on {Date}. Created {Count} records.", today, recordsCreated);
+            //logger.LogInformation("Attendance records created successfully for all employees on {Date}. Created {Count} records.", today, recordsCreated);
         }
         catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message?.Contains("duplicate") == true ||
                                               dbEx.InnerException?.Message?.Contains("unique") == true)
@@ -206,7 +206,7 @@ internal sealed class AttendanceProcessingService(
 
         try
         {
-            logger.LogInformation("Starting to update attendance check in and check out for {Date}", today);
+            //logger.LogInformation("Starting to update attendance check in and check out for {Date}", today);
 
             // Step 1: Load all attendance logs for today
             List<AttendanceLog> attendanceLogs = await context.AttendanceLogs
@@ -219,7 +219,7 @@ internal sealed class AttendanceProcessingService(
 
             if (attendanceLogs.Count == 0)
             {
-                logger.LogInformation("No attendance logs found for {Date}", today);
+                //logger.LogInformation("No attendance logs found for {Date}", today);
                 return;
             }
 
@@ -241,7 +241,7 @@ internal sealed class AttendanceProcessingService(
 
             if (logsByEmpId.Count == 0)
             {
-                logger.LogInformation("No valid employee IDs found in attendance logs for {Date}", today);
+                //logger.LogInformation("No valid employee IDs found in attendance logs for {Date}", today);
                 return;
             }
 
@@ -394,9 +394,9 @@ internal sealed class AttendanceProcessingService(
                 await context.SaveChangesAsync();
             }
 
-            logger.LogInformation(
-                "Successfully updated attendance check in and check out for {Date}. Updated {Updated} records, Skipped {Skipped} records.",
-                today, recordsUpdated, recordsSkipped);
+            //logger.LogInformation(
+            //    "Successfully updated attendance check in and check out for {Date}. Updated {Updated} records, Skipped {Skipped} records.",
+            //    today, recordsUpdated, recordsSkipped);
         }
         catch (Exception ex)
         {

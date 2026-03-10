@@ -38,9 +38,9 @@ public class AttendanceValidationService : IAttendanceValidationService
 
             if (exists)
             {
-                _logger.LogDebug(
-                    "Duplicate log found for EmpID {EmpID} at {DateTime} on Device {DeviceNo}",
-                    empId, dateTime, deviceNo);
+                //_logger.LogDebug(
+                //    "Duplicate log found for EmpID {EmpID} at {DateTime} on Device {DeviceNo}",
+                //    empId, dateTime, deviceNo);
             }
 
             return exists;

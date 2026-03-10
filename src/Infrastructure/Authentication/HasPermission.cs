@@ -1,7 +1,6 @@
 ﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Models;
-using Domain.Entities.Organizations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -43,7 +42,7 @@ internal sealed class HasPermission : IHasPermission
 
             if (userUnit?.OrganizationalUnitId is not { } userUnitId)
             {
-                _logger.LogDebug("User {UserId} does not belong to any organizational unit", userId);
+                // _logger.LogDebug("User {UserId} does not belong to any organizational unit", userId);
                 return accessibleUnitIds;
             }
 
@@ -53,7 +52,7 @@ internal sealed class HasPermission : IHasPermission
             IEnumerable<Guid> subUnitIds = await GetAllSubUnitIdsAsync(userUnitId, cancellationToken);
             accessibleUnitIds.UnionWith(subUnitIds);
 
-            _logger.LogDebug("User {UserId} can access {UnitCount} organizational units", userId, accessibleUnitIds.Count);
+            // _logger.LogDebug("User {UserId} can access {UnitCount} organizational units", userId, accessibleUnitIds.Count);
             return accessibleUnitIds;
         }
         catch (Exception ex)

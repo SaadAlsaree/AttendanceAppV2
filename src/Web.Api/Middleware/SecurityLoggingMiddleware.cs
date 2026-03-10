@@ -1,6 +1,3 @@
-using System.Text;
-using System.Text.Json;
-
 namespace Web.Api.Middleware;
 
 /// <summary>
@@ -52,8 +49,8 @@ public sealed class SecurityLoggingMiddleware(RequestDelegate next, ILogger<Secu
             string clientIp = GetClientIp(context);
 
             // Log basic request info
-            logger.LogInformation("Security Request: {Method} {Path} from {ClientIp} - UserAgent: {UserAgent}",
-                request.Method, request.Path, clientIp, request.Headers.UserAgent.ToString());
+            //logger.LogInformation("Security Request: {Method} {Path} from {ClientIp} - UserAgent: {UserAgent}",
+            //    request.Method, request.Path, clientIp, request.Headers.UserAgent.ToString());
 
             // Check for suspicious user agents
             string userAgent = request.Headers.UserAgent.ToString().ToUpperInvariant();
@@ -66,8 +63,8 @@ public sealed class SecurityLoggingMiddleware(RequestDelegate next, ILogger<Secu
             // Log authentication info
             if (request.Headers.ContainsKey("Authorization"))
             {
-                string authType = request.Headers.Authorization.ToString().Split(' ')[0];
-                logger.LogInformation("Authentication attempt with {AuthType} from {ClientIp}", authType, clientIp);
+                //string authType = request.Headers.Authorization.ToString().Split(' ')[0];
+                //logger.LogInformation("Authentication attempt with {AuthType} from {ClientIp}", authType, clientIp);
             }
 
             // Log potential attack indicators
@@ -170,8 +167,8 @@ public sealed class SecurityLoggingMiddleware(RequestDelegate next, ILogger<Secu
 
                     if (responseContent.Length > 0 && responseContent.Length < 1000) // Only log small responses
                     {
-                        logger.LogInformation("Client error {StatusCode} response to {ClientIp}: {Response}",
-                            statusCode, clientIp, responseContent);
+                        //logger.LogInformation("Client error {StatusCode} response to {ClientIp}: {Response}",
+                        //    statusCode, clientIp, responseContent);
                     }
                 }
                 catch (Exception ex)
@@ -215,7 +212,7 @@ public sealed class SecurityLoggingMiddleware(RequestDelegate next, ILogger<Secu
             string? country = context.Request.Headers["CF-IPCountry"].FirstOrDefault();
             if (!string.IsNullOrEmpty(country))
             {
-                logger.LogInformation("Request from {Country} - IP: {ClientIp}", country, clientIp);
+                //logger.LogInformation("Request from {Country} - IP: {ClientIp}", country, clientIp);
             }
 
             // Check for other common geolocation headers
@@ -224,7 +221,7 @@ public sealed class SecurityLoggingMiddleware(RequestDelegate next, ILogger<Secu
 
             if (!string.IsNullOrEmpty(geoInfo))
             {
-                logger.LogInformation("Geo info: {GeoInfo} for IP: {ClientIp}", geoInfo, clientIp);
+                //logger.LogInformation("Geo info: {GeoInfo} for IP: {ClientIp}", geoInfo, clientIp);
             }
         }
         catch (Exception ex)
