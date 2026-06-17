@@ -36,4 +36,14 @@ public enum LeaveType
     Cycle = 14,
     [Display(Name = "ورشة عمل")]
     Workshop = 15,
+    [Display(Name = "إجازة 5 سنوات")]
+    FiveYearLeave = 16,
+    [Display(Name = "تكليف")]
+    Assignment = 17,
+    [Display(Name = "نزول خفر")]
+    GuardDescent = 18,
+    [Display(Name = "معفي")]
+    Exempted = 19,
+    [Display(Name = "إجازة دورية")]
+    PeriodicLeave = 20,
 }
