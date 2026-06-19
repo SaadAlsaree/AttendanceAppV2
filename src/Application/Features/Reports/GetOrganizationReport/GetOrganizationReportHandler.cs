@@ -107,23 +107,13 @@ internal class GetOrganizationReportHandler(
         CancellationToken cancellationToken)
     {
 
-        // Get user info
-        UserInfoDto user = await userContext.GetUserAsync();
         var report = new GetOrganizationReportVm();
 
-        // Get all employees in target units
+        // The report headcount is the actual unit population and must not change
+        // when the employee-detail list is searched or paginated.
         IQueryable<Employee> employeesQuery = context.Employees
             .AsNoTracking()
-            .Where(e => unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty));
-
-        // Apply search filter
-        if (!string.IsNullOrWhiteSpace(searchTerm))
-        {
-            employeesQuery = employeesQuery.Where(e =>
-                e.FullName.Contains(searchTerm) ||
-                //e.Code.Contains(searchTerm) ||
-                e.Email!.Contains(searchTerm));
-        }
+            .Where(e => unitIds.Contains(e.OrganizationalUnitId ?? Guid.Empty));
 
         // Get total employee count
         report.TotalEmployees = await employeesQuery.CountAsync(cancellationToken);
@@ -146,32 +136,56 @@ internal class GetOrganizationReportHandler(
             .OrderBy(a => a.CheckInTime ?? a.Date)
             .ToListAsync(cancellationToken);
 
-        // Calculate overall statistics
-        report.TotalAttendances = attendances.Count;
-        report.TotalNotAttendances = attendances.Count - report.TotalAttendances - report.TotalLeaves;
-        report.TotalLate = attendances.Count(a => a.LateMinutes > 0);
-        report.TotalOvertime = attendances.Count(a => a.OvertimeMinutes > 0);
-
-        // Get leave data for the specific date
+        // Get leave data for the specific date (needed before computing non-fingerprinted)
         int totalLeaves = await context.Leaves
                .Where(l => DateOnly.FromDateTime(l.StartDate) <= date &&
                           DateOnly.FromDateTime(l.EndDate) >= date &&
+                          l.Status == LeaveStatus.Approved &&
                           unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
                .CountAsync(cancellationToken);
 
         report.TotalLeaves = totalLeaves;
 
+        // Calculate overall statistics
+        report.TotalAttendances = attendances.Count;
+        // Non-fingerprinted (غير مبصمين): scheduled for the day but did not clock in, excluding those on leave
+        report.TotalNotAttendances = await CountNonFingerprintedAsync(unitIds, date, cancellationToken);
+        report.TotalLate = attendances.Count(a => a.LateMinutes > 0);
+        report.TotalOvertime = attendances.Count(a => a.OvertimeMinutes > 0);
+
         // Build unit summaries
-        await BuildUnitSummariesAsync(report, unitIds, attendances, totalLeaves, searchTerm, pageNumber, pageSize, cancellationToken);
+        await BuildUnitSummariesAsync(report, unitIds, attendances, date, searchTerm, pageNumber, pageSize, cancellationToken);
 
         return report;
+    }
+
+    // Non-fingerprinted (غير مبصمين): employees scheduled for the day (have a ShiftId) who did not clock in
+    // (no check-in and no check-out), excluding those on approved leave that day. Mirrors GetOrganizationalSummaryHandler.
+    private async Task<int> CountNonFingerprintedAsync(List<Guid> unitIds, DateOnly date, CancellationToken cancellationToken)
+    {
+        List<Guid> employeesOnLeave = await context.Leaves
+            .Where(l => DateOnly.FromDateTime(l.StartDate) <= date &&
+                       DateOnly.FromDateTime(l.EndDate) >= date &&
+                       l.Status == LeaveStatus.Approved &&
+                       unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
+            .Select(l => l.EmployeeId)
+            .ToListAsync(cancellationToken);
+
+        return await context.Attendances
+            .Where(a => DateOnly.FromDateTime(a.Date) == date &&
+                       unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
+                       a.ShiftId != null &&
+                       a.CheckInTime == null &&
+                       a.CheckOutTime == null &&
+                       !employeesOnLeave.Contains(a.EmployeeId))
+            .CountAsync(cancellationToken);
     }
 
     private async Task BuildUnitSummariesAsync(
         GetOrganizationReportVm report,
         List<Guid> unitIds,
         List<Domain.Entities.Attendance.Attendance> attendances,
-        int totalLeaves,
+        DateOnly date,
         string? searchTerm,
         int pageNumber,
         int pageSize,
@@ -195,21 +209,23 @@ internal class GetOrganizationReportHandler(
                 ParentUnitName = unit.ParentUnit?.UnitName
             };
 
-            // Get employees for this unit
+            // Keep the real unit headcount independent from search/pagination.
             IQueryable<Employee> unitEmployeesQuery = context.Employees
                 .AsNoTracking()
                 .Where(e => e.OrganizationalUnitId == unit.Id);
 
+            unitSummary.TotalEmployees = await unitEmployeesQuery.CountAsync(cancellationToken);
+
+            IQueryable<Employee> filteredUnitEmployeesQuery = unitEmployeesQuery;
+
             // Apply search filter
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
-                unitEmployeesQuery = unitEmployeesQuery.Where(e =>
+                filteredUnitEmployeesQuery = filteredUnitEmployeesQuery.Where(e =>
                     e.FullName.Contains(searchTerm) ||
                     //e.Code.Contains(searchTerm) ||
                     e.Email!.Contains(searchTerm));
             }
-
-            unitSummary.TotalEmployees = await unitEmployeesQuery.CountAsync(cancellationToken);
 
             // Get shifts count for this unit
             unitSummary.TotalShifts = await context.Shifts
@@ -221,17 +237,23 @@ internal class GetOrganizationReportHandler(
                 .Where(a => a.Employee.OrganizationalUnitId == unit.Id)
                 .ToList();
 
+            // Per-unit leaves for the specific date
+            unitSummary.TotalLeaves = await context.Leaves
+                .Where(l => DateOnly.FromDateTime(l.StartDate) <= date &&
+                           DateOnly.FromDateTime(l.EndDate) >= date &&
+                           l.Status == LeaveStatus.Approved &&
+                           l.Employee.OrganizationalUnitId == unit.Id)
+                .CountAsync(cancellationToken);
+
             // Calculate unit statistics
             unitSummary.TotalAttendances = unitAttendances.Count;
-            unitSummary.TotalNotAttendances = unitSummary.TotalEmployees - unitSummary.TotalAttendances - unitSummary.TotalLeaves;
+            // Non-fingerprinted (غير مبصمين): scheduled for the day but did not clock in, excluding those on leave
+            unitSummary.TotalNotAttendances = await CountNonFingerprintedAsync([unit.Id], date, cancellationToken);
             unitSummary.TotalLate = unitAttendances.Count(a => a.LateMinutes > 0);
             unitSummary.TotalOvertime = unitAttendances.Count(a => a.OvertimeMinutes > 0);
 
-            // Filter leaves for this unit
-            unitSummary.TotalLeaves = totalLeaves;
-
             // Get employee details with pagination
-            List<Employee> unitEmployees = await unitEmployeesQuery
+            List<Employee> unitEmployees = await filteredUnitEmployeesQuery
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(cancellationToken);
