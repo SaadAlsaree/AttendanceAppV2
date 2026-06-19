@@ -34,6 +34,25 @@ public sealed class UnitSummary
     public int TotalOvertime { get; set; }
     public List<EmployeeAttendanceDetail> EmployeeDetails { get; set; } = new();
 
+    // أسماء غير المبصمين والإجراءات — قوائم كاملة غير خاضعة للتصفّح (للطباعة)
+    public List<NonFingerprintedEmployee> NonFingerprintedEmployees { get; set; } = new();
+    public List<ActionEmployee> ActionEmployees { get; set; } = new();
+
+}
+
+// موظف غير مبصم (مجدول لليوم ولم يسجّل بصمة دخول/خروج وليس في إجازة)
+public sealed class NonFingerprintedEmployee
+{
+    public Guid EmployeeId { get; set; }
+    public string EmployeeName { get; set; } = string.Empty;
+}
+
+// موظف لديه إجراء/موقف لليوم (إجازة، واجب، مستثنى، منسب، غياب ...) مع اسم الإجراء
+public sealed class ActionEmployee
+{
+    public Guid EmployeeId { get; set; }
+    public string EmployeeName { get; set; } = string.Empty;
+    public string ActionName { get; set; } = string.Empty;
 }
 
 public sealed class EmployeeAttendanceDetail

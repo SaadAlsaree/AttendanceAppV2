@@ -1,4 +1,5 @@
-﻿using Application.Abstractions.Authentication;
+﻿using System.Reflection;
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
@@ -149,7 +150,7 @@ internal class GetOrganizationReportHandler(
         // Calculate overall statistics
         report.TotalAttendances = attendances.Count;
         // Non-fingerprinted (غير مبصمين): scheduled for the day but did not clock in, excluding those on leave
-        report.TotalNotAttendances = await CountNonFingerprintedAsync(unitIds, date, cancellationToken);
+        report.TotalNotAttendances = (await GetNonFingerprintedAsync(unitIds, date, cancellationToken)).Count;
         report.TotalLate = attendances.Count(a => a.LateMinutes > 0);
         report.TotalOvertime = attendances.Count(a => a.OvertimeMinutes > 0);
 
@@ -161,7 +162,8 @@ internal class GetOrganizationReportHandler(
 
     // Non-fingerprinted (غير مبصمين): employees scheduled for the day (have a ShiftId) who did not clock in
     // (no check-in and no check-out), excluding those on approved leave that day. Mirrors GetOrganizationalSummaryHandler.
-    private async Task<int> CountNonFingerprintedAsync(List<Guid> unitIds, DateOnly date, CancellationToken cancellationToken)
+    // Returns the actual employee names so the printed report can list them (count = result.Count).
+    private async Task<List<NonFingerprintedEmployee>> GetNonFingerprintedAsync(List<Guid> unitIds, DateOnly date, CancellationToken cancellationToken)
     {
         List<Guid> employeesOnLeave = await context.Leaves
             .Where(l => DateOnly.FromDateTime(l.StartDate) <= date &&
@@ -172,13 +174,97 @@ internal class GetOrganizationReportHandler(
             .ToListAsync(cancellationToken);
 
         return await context.Attendances
+            .AsNoTracking()
             .Where(a => DateOnly.FromDateTime(a.Date) == date &&
                        unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                        a.ShiftId != null &&
                        a.CheckInTime == null &&
                        a.CheckOutTime == null &&
                        !employeesOnLeave.Contains(a.EmployeeId))
-            .CountAsync(cancellationToken);
+            .Select(a => new NonFingerprintedEmployee
+            {
+                EmployeeId = a.EmployeeId,
+                EmployeeName = a.Employee.FullName
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    // Deliberate status actions (الاجراءات) recorded on an attendance row. Excludes the "present" punch
+    // statuses (Present/Late/Early_Out/Overtime — those belong in the present listing) and Pending
+    // (the unprocessed bucket that the non-fingerprinted list already covers).
+    private static readonly AttendanceStatus[] ActionStatuses =
+    [
+        AttendanceStatus.Absent,
+        AttendanceStatus.Break,
+        AttendanceStatus.Vacation,
+        AttendanceStatus.Holiday,
+        AttendanceStatus.Duty,
+        AttendanceStatus.Exempted,
+        AttendanceStatus.Permitted
+    ];
+
+    // Actions/statuses (الاجراءات): employees who have a status action for the day — approved leaves
+    // (labeled by leave type) plus attendance records carrying a deliberate status (see ActionStatuses).
+    // One row per employee.
+    private async Task<List<ActionEmployee>> GetActionEmployeesAsync(Guid unitId, DateOnly date, CancellationToken cancellationToken)
+    {
+        var leaveActions = await context.Leaves
+            .AsNoTracking()
+            .Where(l => DateOnly.FromDateTime(l.StartDate) <= date &&
+                       DateOnly.FromDateTime(l.EndDate) >= date &&
+                       l.Status == LeaveStatus.Approved &&
+                       l.Employee.OrganizationalUnitId == unitId)
+            .Select(l => new { l.EmployeeId, l.Employee.FullName, l.LeaveType })
+            .ToListAsync(cancellationToken);
+
+        var attendanceActions = await context.Attendances
+            .AsNoTracking()
+            .Where(a => DateOnly.FromDateTime(a.Date) == date &&
+                       a.Employee.OrganizationalUnitId == unitId &&
+                       ActionStatuses.Contains(a.Status))
+            .Select(a => new { a.EmployeeId, a.Employee.FullName, a.Status })
+            .ToListAsync(cancellationToken);
+
+        var actions = new List<ActionEmployee>();
+        var seen = new HashSet<Guid>();
+
+        foreach (var leave in leaveActions)
+        {
+            if (seen.Add(leave.EmployeeId))
+            {
+                actions.Add(new ActionEmployee
+                {
+                    EmployeeId = leave.EmployeeId,
+                    EmployeeName = leave.FullName,
+                    ActionName = GetEnumDisplayName(leave.LeaveType)
+                });
+            }
+        }
+
+        foreach (var attendance in attendanceActions)
+        {
+            if (seen.Add(attendance.EmployeeId))
+            {
+                actions.Add(new ActionEmployee
+                {
+                    EmployeeId = attendance.EmployeeId,
+                    EmployeeName = attendance.FullName,
+                    ActionName = GetEnumDisplayName(attendance.Status)
+                });
+            }
+        }
+
+        return actions;
+    }
+
+    // Resolve an enum value's [Display(Name = "...")] Arabic label, falling back to the enum name.
+    private static string GetEnumDisplayName<TEnum>(TEnum value) where TEnum : struct, Enum
+    {
+        System.ComponentModel.DataAnnotations.DisplayAttribute? displayAttribute = typeof(TEnum)
+            .GetField(value.ToString())
+            ?.GetCustomAttribute<System.ComponentModel.DataAnnotations.DisplayAttribute>();
+
+        return displayAttribute?.Name ?? value.ToString();
     }
 
     private async Task BuildUnitSummariesAsync(
@@ -247,8 +333,12 @@ internal class GetOrganizationReportHandler(
 
             // Calculate unit statistics
             unitSummary.TotalAttendances = unitAttendances.Count;
-            // Non-fingerprinted (غير مبصمين): scheduled for the day but did not clock in, excluding those on leave
-            unitSummary.TotalNotAttendances = await CountNonFingerprintedAsync([unit.Id], date, cancellationToken);
+            // Non-fingerprinted (غير مبصمين): scheduled for the day but did not clock in, excluding those on leave.
+            // Keep names (for print) and count consistent from the same query.
+            unitSummary.NonFingerprintedEmployees = await GetNonFingerprintedAsync([unit.Id], date, cancellationToken);
+            unitSummary.TotalNotAttendances = unitSummary.NonFingerprintedEmployees.Count;
+            // Actions/statuses (الاجراءات) for the day — leaves + non-present attendance statuses.
+            unitSummary.ActionEmployees = await GetActionEmployeesAsync(unit.Id, date, cancellationToken);
             unitSummary.TotalLate = unitAttendances.Count(a => a.LateMinutes > 0);
             unitSummary.TotalOvertime = unitAttendances.Count(a => a.OvertimeMinutes > 0);
 
