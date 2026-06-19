@@ -28,6 +28,7 @@ internal sealed class GetNotAttendanceHandler(
             .Include(a => a.Shift)
             .Include(a => a.AttendanceSchedule)
             .Where(a =>
+                a.ShiftId != null &&
                 !a.CheckInTime.HasValue &&
                 !a.CheckOutTime.HasValue)
             .AsNoTracking();
@@ -116,7 +117,7 @@ internal sealed class GetNotAttendanceHandler(
             ? await context.Leaves
                 .Where(l =>
                     employeeIds.Contains(l.EmployeeId) &&
-                    // l.Status == LeaveStatus.Approved &&
+                    l.Status == LeaveStatus.Approved &&
                     l.StartDate.Date <= maxDate &&
                     l.EndDate.Date >= minDate)
                 .ToListAsync(cancellationToken)
