@@ -65,6 +65,12 @@ internal sealed class GetEmployeesQueryHandler(
             return PaginatedResponse<EmployeeResponse>.Empty(query.Page, query.PageSize);
         }
 
+        // Apply deterministic ordering (newest first) so pagination is stable and recently
+        // added employees surface on the first page — required for assigning schedules to new hires.
+        employeesQuery = employeesQuery
+            .OrderByDescending(e => e.CreatedAt)
+            .ThenBy(e => e.FullName);
+
         // Apply pagination
         IReadOnlyList<EmployeeResponse> paginatedEmployees = await employeesQuery
             .Skip((query.Page - 1) * query.PageSize)
