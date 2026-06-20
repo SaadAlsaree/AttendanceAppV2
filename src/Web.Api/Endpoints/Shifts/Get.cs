@@ -59,7 +59,7 @@ internal sealed class Get : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin"];
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "SecurityOfficer"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      })).RequireRateLimiting("per-user");
     }

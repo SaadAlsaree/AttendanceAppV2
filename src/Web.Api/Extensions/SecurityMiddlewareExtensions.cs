@@ -18,6 +18,9 @@ public static class SecurityMiddlewareExtensions
         app.UseMiddleware<RateLimitingMiddleware>();
         app.UseMiddleware<IpBlockingMiddleware>();
         app.UseMiddleware<CsrfProtectionMiddleware>();
+
+        // View-only (عرض فقط) backstop for security officers — blocks all non-safe methods.
+        app.UseMiddleware<ViewOnlyRoleMiddleware>();
         //app.UseMiddleware<RequestValidationMiddleware>();
         //app.UseMiddleware<SqlInjectionProtectionMiddleware>();
 
