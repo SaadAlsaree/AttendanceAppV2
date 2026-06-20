@@ -79,4 +79,12 @@ public static class LeaveErrors
     public static Error LeaveHasEnded(Guid leaveId) => Error.Problem(
         "Leave.LeaveHasEnded",
         $"Cannot modify leave request with Id = '{leaveId}' as it has already ended");
+
+    public static Error EditWindowExpired(Guid leaveId) => Error.Problem(
+        "Leave.EditWindowExpired",
+        "انتهت مدة تعديل الموقف. التعديل مسموح خلال 24 ساعة فقط من إنشائه.");
+
+    public static Error UnauthorizedUpdate(Guid leaveId) => Error.Forbidden(
+        "Leave.UnauthorizedUpdate",
+        $"You are not authorized to update leave request with Id = '{leaveId}'");
 }

@@ -37,5 +37,5 @@ public record Error
         new(code, description, ErrorType.Validation);
 
     public static Error Forbidden(string code, string description) =>
-        new(code, description, ErrorType.Failure);
+        new(code, description, ErrorType.Forbidden);
 }
