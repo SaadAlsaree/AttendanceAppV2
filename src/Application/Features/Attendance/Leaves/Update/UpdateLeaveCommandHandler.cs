@@ -42,11 +42,17 @@ internal sealed class UpdateLeaveCommandHandler(
 
         // Feature 08: editing a status (موقف) is open for 24h after it was recorded (Baghdad local time).
         // Anchored on the stored leave.CreatedAt, never on command dates (prevents bypass by editing the date).
-        // Extension point (Feature 13): admins may bypass this window for long leaves.
-        DateTime createdLocal = dateTimeProvider.ConvertToLocalTime(leave.CreatedAt);
-        if (dateTimeProvider.Now > createdLocal.AddHours(24))
+        // Feature 13 (فتح التعديل على الاجازات الطويلة للادمن فقط): Admin only may bypass this window to
+        // edit long/old leaves. The Arabic «فقط» (only) excludes every other role — including SuperAdmin,
+        // which is otherwise privileged above — so the bypass keys on Role.Admin exactly, reusing the
+        // user already loaded above for the object-level authorization check.
+        if (user.Role != Role.Admin)
         {
-            return Result.Failure<Guid>(LeaveErrors.EditWindowExpired(command.LeaveId));
+            DateTime createdLocal = dateTimeProvider.ConvertToLocalTime(leave.CreatedAt);
+            if (dateTimeProvider.Now > createdLocal.AddHours(24))
+            {
+                return Result.Failure<Guid>(LeaveErrors.EditWindowExpired(command.LeaveId));
+            }
         }
 
         // Apply the edited fields (the Leave entity has no Notes/EmergencyContact columns, so those are ignored).
