@@ -75,14 +75,22 @@ internal sealed class GetAttendanceQueryHandler(
             string? sortOrder = query.SortOrder?.ToUpperInvariant();
             bool isDescending = sortOrder == "DESC";
 
+            // NOTE: compare against UPPERCASE labels — ToUpperInvariant() is required by the
+            // analyzer (CA1308). Previously the labels were lowercase, so no branch ever
+            // matched and every sort silently fell back to date-desc.
             attendanceQuery = query.SortBy.ToUpperInvariant() switch
             {
-                "date" => isDescending ? attendanceQuery.OrderByDescending(a => a.Date) : attendanceQuery.OrderBy(a => a.Date),
-                "checkintime" => isDescending ? attendanceQuery.OrderByDescending(a => a.CheckInTime) : attendanceQuery.OrderBy(a => a.CheckInTime),
-                "checkouttime" => isDescending ? attendanceQuery.OrderByDescending(a => a.CheckOutTime) : attendanceQuery.OrderBy(a => a.CheckOutTime),
-                "status" => isDescending ? attendanceQuery.OrderByDescending(a => a.Status) : attendanceQuery.OrderBy(a => a.Status),
-                "employeename" => isDescending ? attendanceQuery.OrderByDescending(a => a.Employee.FirstName) : attendanceQuery.OrderBy(a => a.Employee.FirstName),
-                "createdat" => isDescending ? attendanceQuery.OrderByDescending(a => a.CreatedAt) : attendanceQuery.OrderBy(a => a.CreatedAt),
+                "DATE" => isDescending ? attendanceQuery.OrderByDescending(a => a.Date) : attendanceQuery.OrderBy(a => a.Date),
+                // Order by check-in precedence (earliest first), pushing rows without a check-in to the end
+                // in both directions, with a stable tiebreaker so paging is deterministic.
+                "CHECKINTIME" => (isDescending
+                        ? attendanceQuery.OrderBy(a => a.CheckInTime.HasValue ? 0 : 1).ThenByDescending(a => a.CheckInTime)
+                        : attendanceQuery.OrderBy(a => a.CheckInTime.HasValue ? 0 : 1).ThenBy(a => a.CheckInTime))
+                    .ThenBy(a => a.Id),
+                "CHECKOUTTIME" => isDescending ? attendanceQuery.OrderByDescending(a => a.CheckOutTime) : attendanceQuery.OrderBy(a => a.CheckOutTime),
+                "STATUS" => isDescending ? attendanceQuery.OrderByDescending(a => a.Status) : attendanceQuery.OrderBy(a => a.Status),
+                "EMPLOYEENAME" => isDescending ? attendanceQuery.OrderByDescending(a => a.Employee.FirstName) : attendanceQuery.OrderBy(a => a.Employee.FirstName),
+                "CREATEDAT" => isDescending ? attendanceQuery.OrderByDescending(a => a.CreatedAt) : attendanceQuery.OrderBy(a => a.CreatedAt),
                 _ => attendanceQuery.OrderByDescending(a => a.Date)
             };
         }
