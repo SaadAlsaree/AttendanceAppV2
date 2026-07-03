@@ -201,17 +201,17 @@ internal sealed class AttendanceProcessingService(
     {
 
         DateTime today = dateTimeProvider.GetUtcNow().Date;
-        DateTime todayStart = today.Date;
-        DateTime todayEnd = today.Date.AddDays(1).AddTicks(-1);
+        DateTime processingStart = today.Date.AddDays(-1);
+        DateTime processingEnd = today.Date.AddDays(1);
 
         try
         {
             //logger.LogInformation("Starting to update attendance check in and check out for {Date}", today);
 
-            // Step 1: Load all attendance logs for today
+            // Step 1: Load recent attendance logs so overnight check-outs can be paired with the previous work date.
             List<AttendanceLog> attendanceLogs = await context.AttendanceLogs
-                .Where(a => a.DateTimeAttend >= todayStart &&
-                           a.DateTimeAttend < todayEnd &&
+                .Where(a => a.DateTimeAttend >= processingStart &&
+                           a.DateTimeAttend < processingEnd &&
                            !a.IsDeleted)
                 .OrderBy(a => a.DateTimeAttend)
                 .AsNoTracking()
@@ -223,66 +223,75 @@ internal sealed class AttendanceProcessingService(
                 return;
             }
 
-            // Step 2: Group logs by EmpID and find first check-in and last check-out
-            var logsByEmpId = attendanceLogs
-                .GroupBy(log => log.EmpID)
+            // Step 2: Get all unique EmpIDs and load employees in one query
+            var empIds = attendanceLogs
+                .Select(log => log.EmpID)
+                .Where(empId => !string.IsNullOrWhiteSpace(empId))
+                .Distinct()
+                .ToList();
+
+            Dictionary<string, Employee> employeesByEmpId = await context.Employees
+                .Where(e => empIds.Contains(e.EmpID) && e.OrganizationalUnitId != null)
+                .ToDictionaryAsync(e => e.EmpID, e => e);
+
+            // Step 3: Load attendance records for the same two-day window with Shift navigation property
+            List<Attendance> attendanceRecords = await context.Attendances
+                .Include(a => a.Shift)
+                .Where(a => a.Date >= processingStart && a.Date < processingEnd)
+                .ToListAsync();
+
+            var attendanceByEmployeeAndDate = attendanceRecords
+                .GroupBy(a => (a.EmployeeId, Date: DateOnly.FromDateTime(a.Date)))
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // Step 4: Group logs by employee and resolved work date.
+            var resolvedLogs = attendanceLogs
+                .Where(log => !string.IsNullOrWhiteSpace(log.EmpID))
+                .SelectMany(log =>
+                {
+                    if (!employeesByEmpId.TryGetValue(log.EmpID, out Employee? employee))
+                    {
+                        return [];
+                    }
+
+                    DateOnly attendanceDate = ResolveAttendanceDate(log, employee.Id, attendanceByEmployeeAndDate);
+                    return new[] { new ResolvedAttendanceLog(employee.Id, attendanceDate, log) };
+                })
+                .ToList();
+
+            var logsByEmployeeAndDate = resolvedLogs
+                .GroupBy(item => (item.EmployeeId, item.AttendanceDate))
                 .Select(g => new
                 {
-                    EmpID = g.Key,
-                    FirstCheckIn = g.Where(l => l.Direct == 1)
+                    g.Key.EmployeeId,
+                    g.Key.AttendanceDate,
+                    FirstCheckIn = g.Select(item => item.Log)
+                        .Where(l => l.Direct == 1)
                         .OrderBy(l => l.DateTimeAttend)
                         .FirstOrDefault(),
-                    LastCheckOut = g.Where(l => l.Direct == 2)
+                    LastCheckOut = g.Select(item => item.Log)
+                        .Where(l => l.Direct == 2)
                         .OrderByDescending(l => l.DateTimeAttend)
                         .FirstOrDefault()
                 })
-                .Where(x => !string.IsNullOrWhiteSpace(x.EmpID))
                 .ToList();
 
-            if (logsByEmpId.Count == 0)
+            if (logsByEmployeeAndDate.Count == 0)
             {
                 //logger.LogInformation("No valid employee IDs found in attendance logs for {Date}", today);
                 return;
             }
 
-            // Step 3: Get all unique EmpIDs and load employees in one query
-            var empIds = logsByEmpId.Select(x => x.EmpID).Distinct().ToList();
-            Dictionary<string, Employee> employeesByEmpId = await context.Employees
-                .Where(e => empIds.Contains(e.EmpID) && e.OrganizationalUnitId != null)
-                .ToDictionaryAsync(e => e.EmpID, e => e);
-
-            // Step 4: Load all attendance records for today in one query with Shift navigation property
-            List<Attendance> attendanceRecords = await context.Attendances
-                .Include(a => a.Shift)
-                .Where(a => a.Date >= todayStart && a.Date < todayEnd)
-                .ToListAsync();
-
-            // Step 5: Create dictionary for fast lookup
-            var attendanceByEmployeeId = attendanceRecords
-                .GroupBy(a => a.EmployeeId)
-                .ToDictionary(g => g.Key, g => g.First());
-
-            // Step 6: Update attendance records
+            // Step 5: Update attendance records
             int recordsUpdated = 0;
             int recordsSkipped = 0;
 
-            foreach (var logGroup in logsByEmpId)
+            foreach (var logGroup in logsByEmployeeAndDate)
             {
-                // Skip if employee not found
-                if (!employeesByEmpId.TryGetValue(logGroup.EmpID, out Employee? employee))
-                {
-                    logger.LogWarning("Employee with EmpID {EmpID} not found in database or has no organizational unit", logGroup.EmpID);
-                    recordsSkipped++;
-                    continue;
-                }
-
-                Guid employeeId = employee.Id;
-
-
                 // Get attendance record (should already exist from CreateAttendanceRecordsAsyncIfNotExists)
-                if (!attendanceByEmployeeId.TryGetValue(employeeId, out Attendance? attendance))
+                if (!attendanceByEmployeeAndDate.TryGetValue((logGroup.EmployeeId, logGroup.AttendanceDate), out Attendance? attendance))
                 {
-                    logger.LogWarning("Attendance record not found for employee {EmployeeId} on {Date}. Skipping.", employeeId, today);
+                    logger.LogWarning("Attendance record not found for employee {EmployeeId} on {Date}. Skipping.", logGroup.EmployeeId, logGroup.AttendanceDate);
                     recordsSkipped++;
                     continue;
                 }
@@ -529,6 +538,48 @@ internal sealed class AttendanceProcessingService(
         // Note: SaveChangesAsync is called by the caller (UpdateAttendancesCheckInAndCheckOutAsync)
         // to batch all updates together for better performance
     }
+
+    private DateOnly ResolveAttendanceDate(
+        AttendanceLog log,
+        Guid employeeId,
+        Dictionary<(Guid EmployeeId, DateOnly Date), Attendance> attendanceByEmployeeAndDate)
+    {
+        DateOnly logWorkDate = log.DateWork;
+
+        if (log.Direct != 2)
+        {
+            return logWorkDate;
+        }
+
+        DateOnly previousWorkDate = logWorkDate.AddDays(-1);
+
+        if (!attendanceByEmployeeAndDate.TryGetValue((employeeId, previousWorkDate), out Attendance? previousAttendance) ||
+            !IsOvernightShift(previousAttendance.Shift))
+        {
+            return logWorkDate;
+        }
+
+        DateTime localAttendTime = dateTimeProvider.ConvertToLocalTime(log.DateTimeAttend);
+        var localTime = TimeOnly.FromDateTime(localAttendTime);
+
+        if (localTime < previousAttendance.Shift!.StartTime &&
+            localTime < TimeOnly.FromTimeSpan(TimeSpan.FromHours(12)))
+        {
+            return previousWorkDate;
+        }
+
+        return logWorkDate;
+    }
+
+    private static bool IsOvernightShift(Shift? shift)
+    {
+        return shift is not null && shift.EndTime < shift.StartTime;
+    }
+
+    private sealed record ResolvedAttendanceLog(
+        Guid EmployeeId,
+        DateOnly AttendanceDate,
+        AttendanceLog Log);
 
     private static AttendanceStatus DetermineStatusFromMetrics(AttendanceMetrics metrics)
     {
