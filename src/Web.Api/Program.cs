@@ -90,7 +90,8 @@ if (app.Environment.IsDevelopment())
     // Hangfire Dashboard - available only in development
     app.UseHangfireDashboard("/hangfire", new DashboardOptions
     {
-        Authorization = Array.Empty<IDashboardAuthorizationFilter>() // No auth in development
+        Authorization = Array.Empty<IDashboardAuthorizationFilter>(), // No auth in development
+        IgnoreAntiforgeryToken = true // Allow E2E specs to trigger recurring jobs directly
     });
 }
 
