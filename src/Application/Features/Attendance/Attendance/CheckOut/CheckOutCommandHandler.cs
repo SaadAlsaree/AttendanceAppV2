@@ -65,7 +65,15 @@ internal sealed class CheckOutCommandHandler(
 
         attendance.LastUpdatedAt = dateTimeProvider.GetUtcNow();
 
-        // Calculate all metrics if shift is assigned and check-in time exists
+        // ساعات العمل تُحسب من الوقتين فقط — بدون الحاجة إلى وردية
+        if (attendance.CheckInTime.HasValue)
+        {
+            attendance.WorkingMinutes = calculationService.CalculateWorkingMinutes(
+                attendance.CheckInTime.Value,
+                checkOutTimeUtc);
+        }
+
+        // Calculate shift-dependent metrics if shift is assigned and check-in time exists
         if (attendance.Shift is not null && attendance.CheckInTime.HasValue)
         {
             AttendanceMetrics metrics = calculationService.CalculateMetrics(
@@ -73,7 +81,6 @@ internal sealed class CheckOutCommandHandler(
                 checkOutTimeUtc,
                 attendance.Shift);
 
-            attendance.WorkingMinutes = metrics.WorkingMinutes;
             attendance.LateMinutes = metrics.LateMinutes;
             attendance.EarlyLeaveMinutes = metrics.EarlyLeaveMinutes;
             attendance.OvertimeMinutes = metrics.OvertimeMinutes;

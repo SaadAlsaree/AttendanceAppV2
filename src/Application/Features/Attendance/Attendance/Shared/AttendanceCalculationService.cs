@@ -32,7 +32,7 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         int earlyLeaveMinutes = CalculateEarlyLeaveMinutes(checkOutTimeOnly, shift);
 
         // Calculate working minutes (استخدام UTC للحساب الصحيح)
-        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime);
+        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime) ?? 0;
 
         // Calculate overtime minutes
         int overtimeMinutes = CalculateOvertimeMinutes(workingMinutes, shift);
@@ -65,7 +65,7 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         int earlyLeaveMinutes = CalculateEarlyLeaveMinutes(checkOutTimeOnly, shift);
 
         // Calculate working minutes (excluding approved leave time)
-        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime);
+        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime) ?? 0;
 
         // Calculate overtime minutes
         int overtimeMinutes = CalculateOvertimeMinutes(workingMinutes, shift);
@@ -169,9 +169,18 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         return 0; // Not early - انصرف في الوقت المحدد أو بعده
     }
 
-    private static int CalculateWorkingMinutes(DateTime checkInTime, DateTime checkOutTime)
+    public int? CalculateWorkingMinutes(DateTime checkInTime, DateTime checkOutTime)
     {
-        return (int)(checkOutTime - checkInTime).TotalMinutes;
+        // توحيد النوعين إلى UTC قبل الطرح لتجنّب انحراف المنطقة الزمنية
+        DateTime checkInUtc = _dateTimeProvider.EnsureUtc(checkInTime);
+        DateTime checkOutUtc = _dateTimeProvider.EnsureUtc(checkOutTime);
+
+        if (checkOutUtc <= checkInUtc)
+        {
+            return null; // بصمة مكررة/معكوسة — لا تُخزَّن كصفر أو قيمة سالبة
+        }
+
+        return (int)(checkOutUtc - checkInUtc).TotalMinutes;
     }
 
     private static int CalculateOvertimeMinutes(int workingMinutes, Shift shift)
