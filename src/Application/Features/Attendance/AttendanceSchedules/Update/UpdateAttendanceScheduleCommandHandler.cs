@@ -1,7 +1,9 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Features.Attendance.AttendanceSchedules.shared;
 using Domain.Entities.Attendance;
+using Domain.Entities.Organizations;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -9,7 +11,8 @@ namespace Application.Attendance.AttendanceSchedules.Update;
 
 internal sealed class UpdateAttendanceScheduleCommandHandler(
     IApplicationDbContext context,
-    IDateTimeProvider dateTimeProvider)
+    IDateTimeProvider dateTimeProvider,
+    IHasPermission hasPermission)
     : ICommandHandler<UpdateAttendanceScheduleCommand, AttendanceScheduleResponse>
 {
     public async Task<Result<AttendanceScheduleResponse>> Handle(UpdateAttendanceScheduleCommand command, CancellationToken cancellationToken)
@@ -23,6 +26,12 @@ internal sealed class UpdateAttendanceScheduleCommandHandler(
         if (schedule is null)
         {
             return Result.Failure<AttendanceScheduleResponse>(AttendanceScheduleErrors.NotFound(command.AttendanceScheduleId));
+        }
+
+        // Scoped roles (e.g. OrgSupervisor) may only manage employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(schedule.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<AttendanceScheduleResponse>(EmployeeErrors.AccessDenied);
         }
 
         // Validate date range if both dates are provided

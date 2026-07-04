@@ -59,7 +59,7 @@ internal sealed class GetMySchedules : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "User"];
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "User", "OrgSupervisor"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }))
      .RequireRateLimiting("per-user");

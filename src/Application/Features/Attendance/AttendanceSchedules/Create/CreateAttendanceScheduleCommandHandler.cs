@@ -1,3 +1,4 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Entities.Attendance;
@@ -9,7 +10,8 @@ namespace Application.Attendance.AttendanceSchedules.Create;
 
 internal sealed class CreateAttendanceScheduleCommandHandler(
     IApplicationDbContext context,
-    IDateTimeProvider dateTimeProvider)
+    IDateTimeProvider dateTimeProvider,
+    IHasPermission hasPermission)
     : ICommandHandler<CreateAttendanceScheduleCommand, bool>
 {
     public async Task<Result<bool>> Handle(CreateAttendanceScheduleCommand command, CancellationToken cancellationToken)
@@ -22,6 +24,12 @@ internal sealed class CreateAttendanceScheduleCommandHandler(
         if (!employeeExists)
         {
             return Result.Failure<bool>(EmployeeErrors.NotFound(command.EmployeeId));
+        }
+
+        // Scoped roles (e.g. OrgSupervisor) may only manage employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(command.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<bool>(EmployeeErrors.AccessDenied);
         }
 
 

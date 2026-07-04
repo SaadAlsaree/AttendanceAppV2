@@ -1,7 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Models;
 using Domain.Entities.Organizations;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +13,8 @@ namespace Application.Features.Reports.GetAttendanceReport;
 
 internal sealed class GetAttendanceReportHandler(
     IApplicationDbContext context,
-
+    IUserContext userContext,
+    IHasPermission hasPermission,
     IDateTimeProvider dateTimeProvider)
     : IQueryHandler<GetAttendanceReportQuery, ApiResponse<AttendanceReportVm>>
 {
@@ -28,6 +31,19 @@ internal sealed class GetAttendanceReportHandler(
             {
                 return Result.Failure<ApiResponse<AttendanceReportVm>>(
                     Error.NotFound("OrganizationalUnit.NotFound", "الجهة غير موجودة"));
+            }
+
+            // An OrgSupervisor may only report on a unit inside their own tree.
+            // (Keyed to OrgSupervisor only — SuperAdmin often has no unit and must stay global.)
+            UserInfoDto currentUser = await userContext.GetUserAsync();
+            if (currentUser.Role == Role.OrgSupervisor)
+            {
+                IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
+                if (!accessibleUnitIds.Contains(query.OrganizationalUnitId))
+                {
+                    return Result.Failure<ApiResponse<AttendanceReportVm>>(
+                        Error.Forbidden("Report.AccessDenied", "ليس لديك صلاحية لعرض تقرير جهة خارج نطاقك"));
+                }
             }
 
 
