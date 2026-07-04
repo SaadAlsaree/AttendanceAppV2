@@ -33,6 +33,7 @@ public sealed class Employee : AuditableEntity<Guid>
     public User? User { get; set; }
     public List<AttendanceSchedule> AttendanceSchedules { get; set; } = new List<AttendanceSchedule>();
     public List<Attendance.Attendance> Attendances { get; set; } = new List<Attendance.Attendance>();
+    public List<EmployeeWeeklyShift> WeeklyShifts { get; set; } = new List<EmployeeWeeklyShift>();
 
     // Navigation Properties
     public List<Employee> Subordinates { get; set; } = new List<Employee>();

@@ -81,6 +81,15 @@ internal sealed class AttendanceProcessingService(
                 .AsNoTracking()
                 .ToListAsync();
 
+            // Step 5b: Load the fixed weekly pattern shift for today's weekday (feature 14)
+            System.DayOfWeek todayDayOfWeek = todayDateOnly.DayOfWeek;
+
+            Dictionary<Guid, Guid> weeklyShiftByEmployee = await context.EmployeeWeeklyShifts
+                .Where(w => w.DayOfWeek == todayDayOfWeek &&
+                            employeeIds.Contains(w.EmployeeId))
+                .AsNoTracking()
+                .ToDictionaryAsync(w => w.EmployeeId, w => w.ShiftId);
+
             // Step 6: Create dictionaries for fast lookup
             var scheduleDaysByScheduleId = todaysScheduleDays
                 .GroupBy(sd => sd.AttendanceScheduleId)
@@ -105,73 +114,31 @@ internal sealed class AttendanceProcessingService(
                     continue;
                 }
 
-                // Get schedules for this employee
-                Attendance? newAttendance;
+                // Resolve today's shift: schedule exception → schedule day → weekly pattern → none
+                schedulesByEmployee.TryGetValue(employee.Id, out List<AttendanceSchedule>? candidateSchedules);
 
-                if (!schedulesByEmployee.TryGetValue(employee.Id, out List<AttendanceSchedule>? candidateSchedules) ||
-                    candidateSchedules.Count == 0)
+                ResolvedShift resolved = ShiftResolution.Resolve(
+                    todayDateOnly,
+                    candidateSchedules ?? [],
+                    scheduleId => exceptionsByScheduleId.TryGetValue(scheduleId, out List<ScheduleIssue>? exceptions)
+                        ? exceptions.FirstOrDefault()
+                        : null,
+                    scheduleId => scheduleDaysByScheduleId.TryGetValue(scheduleId, out List<ScheduleDay>? scheduleDays)
+                        ? scheduleDays.FirstOrDefault()
+                        : null,
+                    weeklyShiftByEmployee.TryGetValue(employee.Id, out Guid weeklyShiftId)
+                        ? weeklyShiftId
+                        : null);
+
+                var newAttendance = new Attendance
                 {
-                    // No schedule found, create attendance without shift/schedule
-                    newAttendance = new Attendance
-                    {
-                        EmployeeId = employee.Id,
-                        OrganizationId = employee.OrganizationalUnitId!.Value,
-                        Date = today,
-                        ShiftId = null,
-                        AttendanceScheduleId = null,
-                        Status = AttendanceStatus.Pending
-                    };
-                }
-                else
-                {
-                    // Find the first schedule that doesn't exclude today
-                    AttendanceSchedule? attendanceSchedule = candidateSchedules
-                        .FirstOrDefault(s => !s.ExcludedDates.Contains(todayDateOnly));
-
-                    Guid? shiftId = null;
-                    Guid? attendanceScheduleId = null;
-
-                    if (attendanceSchedule is not null)
-                    {
-                        attendanceScheduleId = attendanceSchedule.Id;
-
-                        // Check for exception first (highest priority)
-                        if (exceptionsByScheduleId.TryGetValue(attendanceSchedule.Id, out List<ScheduleIssue>? exceptions) &&
-                            exceptions.Count > 0)
-                        {
-                            ScheduleIssue exception = exceptions[0];
-                            shiftId = exception.ShiftId;
-
-                            //logger.LogDebug("Using exception shift {ShiftId} for employee {EmployeeId} on {Date}",
-                            //    shiftId, employee.Id, today);
-                        }
-                        // Otherwise, check for schedule day
-                        else if (scheduleDaysByScheduleId.TryGetValue(attendanceSchedule.Id, out List<ScheduleDay>? scheduleDays) &&
-                                scheduleDays.Count > 0)
-                        {
-                            ScheduleDay scheduleDay = scheduleDays[0];
-                            shiftId = scheduleDay.ShiftId;
-
-                            //logger.LogDebug("Using schedule day shift {ShiftId} for employee {EmployeeId} on {Date}",
-                            //    shiftId, employee.Id, today);
-                        }
-                        else
-                        {
-                            logger.LogWarning("No shift found for employee {EmployeeId} on {Date} despite having active schedule {ScheduleId}",
-                                employee.Id, today, attendanceSchedule.Id);
-                        }
-                    }
-
-                    newAttendance = new Attendance
-                    {
-                        EmployeeId = employee.Id,
-                        OrganizationId = employee.OrganizationalUnitId!.Value,
-                        Date = today,
-                        ShiftId = shiftId,
-                        AttendanceScheduleId = attendanceScheduleId,
-                        Status = AttendanceStatus.Pending
-                    };
-                }
+                    EmployeeId = employee.Id,
+                    OrganizationId = employee.OrganizationalUnitId!.Value,
+                    Date = today,
+                    ShiftId = resolved.ShiftId,
+                    AttendanceScheduleId = resolved.AttendanceScheduleId,
+                    Status = AttendanceStatus.Pending
+                };
 
                 context.Attendances.Add(newAttendance);
                 recordsCreated++;

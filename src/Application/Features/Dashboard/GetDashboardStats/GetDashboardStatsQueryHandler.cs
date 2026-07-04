@@ -103,13 +103,10 @@ internal sealed class GetDashboardStatsQueryHandler(
         // جلب إحصائيات الحضور اليوم
         DateTime todayUtc = dateTimeProvider.GetUtcNow().Date;
         DateTime tomorrowUtc = todayUtc.AddDays(1);
-        // جلب إحصائيات الحضور اليوم مع تطبيق الفلاتر والتحقق من التأخير بناءً على الجدول الزمني
+        // جلب إحصائيات الحضور اليوم مع تطبيق الفلاتر
         IQueryable<Domain.Entities.Attendance.Attendance> todayAttendanceQuery = context.Attendances
             .AsNoTracking()
             .Include(a => a.Employee)
-                .ThenInclude(e => e.AttendanceSchedules)
-                    .ThenInclude(ats => ats.ScheduleDays)
-                        .ThenInclude(sd => sd.Shift)
             .Where(a => a.OrganizationId == query.OrganizationId && a.Date >= todayUtc && a.Date < tomorrowUtc);
 
         if (query.DepartmentId.HasValue)
@@ -124,31 +121,9 @@ internal sealed class GetDashboardStatsQueryHandler(
 
         List<Domain.Entities.Attendance.Attendance> todayAttendance = await todayAttendanceQuery.ToListAsync(cancellationToken);
 
-        int lateCount = 0;
-        var today = DateOnly.FromDateTime(dateTimeProvider.GetUtcNow().Date);
-
-        foreach (Domain.Entities.Attendance.Attendance attendance in todayAttendance)
-        {
-            if (attendance.CheckInTime.HasValue && attendance.Employee?.AttendanceSchedules != null)
-            {
-                AttendanceSchedule? activeSchedule = attendance.Employee.AttendanceSchedules
-                    .FirstOrDefault(s => s.IsActive && s.StartDate <= today && (s.EndDate == null || s.EndDate >= today));
-
-                if (activeSchedule?.ScheduleDays != null)
-                {
-                    ScheduleDay? scheduleDay = activeSchedule.ScheduleDays
-                        .FirstOrDefault(d => d.ScheduleDayDate == today);
-
-                    if (scheduleDay?.Shift != null && attendance.CheckInTime.Value.TimeOfDay > scheduleDay.Shift.StartTime.ToTimeSpan())
-                    {
-                        lateCount++;
-                    }
-                }
-            }
-        }
-
+        // اعتمد على اللقطة المخزنة (LateMinutes محسوبة مع فترة السماح) بدل إعادة الحساب من الجدول
         response.PresentToday = todayAttendance.Count(a => a.Status == AttendanceStatus.Present);
-        response.LateToday = lateCount;
+        response.LateToday = todayAttendance.Count(a => a.CheckInTime.HasValue && (a.LateMinutes ?? 0) > 0);
         response.OnLeaveToday = todayAttendance.Count(a => a.Status == AttendanceStatus.Vacation);
         response.RemoteWorkToday = todayAttendance.Count(a => a.Status == AttendanceStatus.Break);
     }

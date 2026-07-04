@@ -54,7 +54,8 @@ internal sealed class GetEmployeesQueryHandler(
             string searchTerm = query.SearchTerm;
             employeesQuery = employeesQuery.Where(e =>
                EF.Functions.Like(e.FullName, $"%{searchTerm}%") ||
-                EF.Functions.Like(e.Code, $"%{searchTerm}%"));
+                EF.Functions.Like(e.Code, $"%{searchTerm}%") ||
+                EF.Functions.Like(e.EmpID, $"%{searchTerm}%"));
         }
 
         // Get total count for pagination
