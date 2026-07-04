@@ -371,8 +371,26 @@ internal sealed class AttendanceProcessingService(
                 }
                 else
                 {
-                    // No shift assigned
-                    if (logGroup.FirstCheckIn is not null || logGroup.LastCheckOut is not null)
+                    // No shift assigned — ساعات العمل تُحسب من الوقتين فقط، بدون وردية
+                    if (logGroup.FirstCheckIn is not null && logGroup.LastCheckOut is not null)
+                    {
+                        attendance.WorkingMinutes = calculationService.CalculateWorkingMinutes(
+                            logGroup.FirstCheckIn.DateTimeAttend,
+                            logGroup.LastCheckOut.DateTimeAttend);
+
+                        if (attendance.WorkingMinutes is null)
+                        {
+                            logger.LogWarning(
+                                "Reversed/duplicate scan pair for attendance {AttendanceId}: check-in {CheckIn:O} >= check-out {CheckOut:O}",
+                                attendance.Id,
+                                logGroup.FirstCheckIn.DateTimeAttend,
+                                logGroup.LastCheckOut.DateTimeAttend);
+                        }
+
+                        attendance.Status = AttendanceStatus.Present;
+                        hasChanges = true;
+                    }
+                    else if (logGroup.FirstCheckIn is not null || logGroup.LastCheckOut is not null)
                     {
                         // If we have at least one time entry, set status to Present
                         attendance.Status = AttendanceStatus.Present;
@@ -532,6 +550,14 @@ internal sealed class AttendanceProcessingService(
         }
         else
         {
+            // No shift — ساعات العمل تُحسب من الوقتين فقط، بدون وردية
+            if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue)
+            {
+                attendance.WorkingMinutes = calculationService.CalculateWorkingMinutes(
+                    attendance.CheckInTime.Value,
+                    attendance.CheckOutTime.Value);
+            }
+
             attendance.Status = AttendanceStatus.Pending;
         }
 
