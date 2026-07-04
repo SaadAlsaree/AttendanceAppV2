@@ -1,5 +1,5 @@
-using Domain.Entities.Organizations;
 using Domain.Entities.Attendance;
+using Domain.Entities.Organizations;
 using SharedKernel;
 
 namespace Application.Attendance.Shared;
@@ -32,7 +32,7 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         int earlyLeaveMinutes = CalculateEarlyLeaveMinutes(checkOutTimeOnly, shift);
 
         // Calculate working minutes (استخدام UTC للحساب الصحيح)
-        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime) ?? 0;
+        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime, shift);
 
         // Calculate overtime minutes
         int overtimeMinutes = CalculateOvertimeMinutes(workingMinutes, shift);
@@ -65,7 +65,7 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         int earlyLeaveMinutes = CalculateEarlyLeaveMinutes(checkOutTimeOnly, shift);
 
         // Calculate working minutes (excluding approved leave time)
-        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime) ?? 0;
+        int workingMinutes = CalculateWorkingMinutes(checkInTime, checkOutTime, shift);
 
         // Calculate overtime minutes
         int overtimeMinutes = CalculateOvertimeMinutes(workingMinutes, shift);
@@ -169,18 +169,17 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         return 0; // Not early - انصرف في الوقت المحدد أو بعده
     }
 
-    public int? CalculateWorkingMinutes(DateTime checkInTime, DateTime checkOutTime)
+    private static int CalculateWorkingMinutes(DateTime checkInTime, DateTime checkOutTime, Shift shift)
     {
-        // توحيد النوعين إلى UTC قبل الطرح لتجنّب انحراف المنطقة الزمنية
-        DateTime checkInUtc = _dateTimeProvider.EnsureUtc(checkInTime);
-        DateTime checkOutUtc = _dateTimeProvider.EnsureUtc(checkOutTime);
+        DateTime effectiveCheckOutTime = checkOutTime;
 
-        if (checkOutUtc <= checkInUtc)
+        if (IsOvernightShift(shift) && effectiveCheckOutTime <= checkInTime)
         {
-            return null; // بصمة مكررة/معكوسة — لا تُخزَّن كصفر أو قيمة سالبة
+            effectiveCheckOutTime = effectiveCheckOutTime.AddDays(1);
         }
 
-        return (int)(checkOutUtc - checkInUtc).TotalMinutes;
+        int workingMinutes = (int)(effectiveCheckOutTime - checkInTime).TotalMinutes;
+        return Math.Max(workingMinutes, 0);
     }
 
     private static int CalculateOvertimeMinutes(int workingMinutes, Shift shift)
@@ -201,7 +200,7 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         TimeOnly endTime = shift.EndTime;
 
         // Handle shifts that span midnight
-        if (endTime < startTime)
+        if (IsOvernightShift(shift))
         {
             // Convert to DateTime for calculation, adding a day to end time
             DateTime startDateTime = DateTime.Today.Add(startTime.ToTimeSpan());
@@ -210,5 +209,10 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
         }
 
         return (int)(endTime - startTime).TotalMinutes;
+    }
+
+    private static bool IsOvernightShift(Shift shift)
+    {
+        return shift.EndTime < shift.StartTime;
     }
 }
