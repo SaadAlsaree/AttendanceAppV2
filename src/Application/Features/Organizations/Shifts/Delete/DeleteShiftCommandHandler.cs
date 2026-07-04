@@ -34,6 +34,15 @@ internal sealed class DeleteShiftCommandHandler(
             return Result.Failure(ShiftErrors.CannotDeleteShiftWithAttendanceRecords());
         }
 
+        // Check if shift is part of any employee's fixed weekly pattern
+        bool assignedToEmployees = await context.EmployeeWeeklyShifts
+            .AnyAsync(w => w.ShiftId == command.ShiftId, cancellationToken);
+
+        if (assignedToEmployees)
+        {
+            return Result.Failure(ShiftErrors.CannotDeleteShiftInUse());
+        }
+
         // Perform soft delete
         shift.IsDeleted = true;
         shift.DeletedAt = dateTimeProvider.GetUtcNow();

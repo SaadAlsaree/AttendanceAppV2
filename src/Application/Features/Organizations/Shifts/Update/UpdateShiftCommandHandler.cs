@@ -39,6 +39,18 @@ internal sealed class UpdateShiftCommandHandler(
             }
         }
 
+        // Block deactivation while the shift is part of any employee's fixed weekly pattern
+        if (command.IsActive == false && shift.IsActive)
+        {
+            bool assignedToEmployees = await context.EmployeeWeeklyShifts
+                .AnyAsync(w => w.ShiftId == command.ShiftId, cancellationToken);
+
+            if (assignedToEmployees)
+            {
+                return Result.Failure<bool>(ShiftErrors.CannotUpdateShiftInUse());
+            }
+        }
+
         // Update shift properties
         shift.Name = command.Name;
         shift.Description = command.Description;

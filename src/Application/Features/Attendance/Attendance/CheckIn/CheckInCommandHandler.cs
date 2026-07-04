@@ -51,24 +51,39 @@ internal sealed class CheckInCommandHandler(
 
 
 
-            // Create new attendance record
-            AttendanceSchedule? activeSchedule = await context.AttendanceSchedules
-                .Include(s => s.ScheduleDays)
+            // Resolve today's shift: schedule exception → schedule day → weekly pattern → none
+            List<AttendanceSchedule> activeSchedules = await context.AttendanceSchedules
                 .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.IsActive && s.StartDate <= today && (!s.EndDate.HasValue || s.EndDate >= today) && s.EmployeeId == employee.Id, cancellationToken);
+                .Where(s => s.IsActive && s.StartDate <= today && (!s.EndDate.HasValue || s.EndDate >= today) && s.EmployeeId == employee.Id)
+                .ToListAsync(cancellationToken);
 
-            // تحقق من وجود جدول ودوام
-            if (activeSchedule is null)
-            {
-                return Result.Failure<AttendanceResponse>(AttendanceErrors.MissingScheduleOrShift(command.EmployeeId, today));
-            }
+            var scheduleIds = activeSchedules.Select(s => s.Id).ToList();
 
-            // get today's schedule day
-            ScheduleDay? todayScheduleDay = await context.ScheduleDays
+            List<ScheduleDay> todayScheduleDays = await context.ScheduleDays
                 .AsNoTracking()
-                .FirstOrDefaultAsync(d => d.ScheduleDayDate == today && d.IsActive && d.AttendanceScheduleId == activeSchedule.Id, cancellationToken);
+                .Where(d => scheduleIds.Contains(d.AttendanceScheduleId) && d.ScheduleDayDate == today && d.IsActive)
+                .ToListAsync(cancellationToken);
 
-            if (todayScheduleDay is null)
+            List<ScheduleIssue> todayExceptions = await context.ScheduleIssues
+                .AsNoTracking()
+                .Where(e => scheduleIds.Contains(e.AttendanceScheduleId) && e.Date == today)
+                .ToListAsync(cancellationToken);
+
+            Guid? weeklyShiftId = await context.EmployeeWeeklyShifts
+                .AsNoTracking()
+                .Where(w => w.EmployeeId == employee.Id && w.DayOfWeek == today.DayOfWeek)
+                .Select(w => (Guid?)w.ShiftId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            ResolvedShift resolved = ShiftResolution.Resolve(
+                today,
+                activeSchedules,
+                scheduleId => todayExceptions.Find(e => e.AttendanceScheduleId == scheduleId),
+                scheduleId => todayScheduleDays.Find(d => d.AttendanceScheduleId == scheduleId),
+                weeklyShiftId);
+
+            // تحقق من وجود جدول أو دوام ثابت
+            if (resolved.Source == ShiftSource.None)
             {
                 return Result.Failure<AttendanceResponse>(AttendanceErrors.MissingScheduleOrShift(command.EmployeeId, today));
             }
@@ -76,7 +91,7 @@ internal sealed class CheckInCommandHandler(
             // Load the shift for calculation
             Shift? shift = await context.Shifts
                 .AsNoTracking()
-                .SingleOrDefaultAsync(s => s.Id == todayScheduleDay.ShiftId, cancellationToken);
+                .SingleOrDefaultAsync(s => s.Id == resolved.ShiftId, cancellationToken);
 
             // Ensure DateTimeAttend is in UTC before saving to database
             DateTime dateTimeAttendUtc = dateTimeProvider.EnsureUtc(command.DateTimeAttend);
@@ -86,8 +101,8 @@ internal sealed class CheckInCommandHandler(
                 EmployeeId = command.EmployeeId,
                 OrganizationId = employee.OrganizationalUnit!.Id,
                 Date = DateTime.SpecifyKind(today.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc),
-                ShiftId = todayScheduleDay.ShiftId,
-                AttendanceScheduleId = activeSchedule.Id,
+                ShiftId = resolved.ShiftId,
+                AttendanceScheduleId = resolved.AttendanceScheduleId,
                 CheckInTime = dateTimeAttendUtc,
                 Notes = command.Notes,
                 Status = AttendanceStatus.Present, // Will be updated below based on calculation
@@ -116,8 +131,12 @@ internal sealed class CheckInCommandHandler(
 
                 attendance.LateMinutes = metrics.LateMinutes;
 
-                // Update status based on lateness and shift configuration
-                attendance.Status = DetermineAttendanceStatus(metrics, shift, command.DateTimeAttend);
+                // Update status based on lateness and shift configuration.
+                // Convert to local time first — the same basis CalculateMetrics uses —
+                // otherwise the early-check-in comparison reads the UTC clock against
+                // the local shift start.
+                attendance.Status = DetermineAttendanceStatus(
+                    metrics, shift, dateTimeProvider.ConvertToLocalTime(command.DateTimeAttend));
             }
         }
         else
@@ -161,8 +180,9 @@ internal sealed class CheckInCommandHandler(
 
                 attendance.LateMinutes = metrics.LateMinutes;
 
-                // Update status based on lateness and shift configuration
-                attendance.Status = DetermineAttendanceStatus(metrics, attendance.Shift, command.DateTimeAttend);
+                // Update status based on lateness and shift configuration (local time, see above)
+                attendance.Status = DetermineAttendanceStatus(
+                    metrics, attendance.Shift, dateTimeProvider.ConvertToLocalTime(command.DateTimeAttend));
             }
         }
 

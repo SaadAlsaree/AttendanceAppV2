@@ -18,6 +18,7 @@ public interface IApplicationDbContext
     DbSet<User> Users { get; }
     DbSet<TodoItem> TodoItems { get; }
     DbSet<Employee> Employees { get; }
+    DbSet<EmployeeWeeklyShift> EmployeeWeeklyShifts { get; }
     DbSet<OrganizationalUnit> OrganizationalUnits { get; }
     DbSet<WorkLocation> WorkLocations { get; }
     DbSet<Shift> Shifts { get; }
