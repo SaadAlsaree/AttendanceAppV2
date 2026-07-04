@@ -77,6 +77,16 @@ internal sealed class AttendanceCalculationService : IAttendanceCalculationServi
             OvertimeMinutes: overtimeMinutes);
     }
 
+    public int? CalculateWorkingMinutes(DateTime checkInTime, DateTime checkOutTime)
+    {
+        if (checkOutTime <= checkInTime)
+        {
+            return null;
+        }
+
+        return (int)(checkOutTime - checkInTime).TotalMinutes;
+    }
+
     private static int CalculateLateMinutes(TimeOnly checkInTime, Shift shift)
     {
         TimeOnly expectedStartTime = shift.StartTime;
