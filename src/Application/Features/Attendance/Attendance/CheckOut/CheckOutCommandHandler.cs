@@ -2,6 +2,7 @@ using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Attendance.Shared;
 using Domain.Entities.Attendance;
+using Domain.Entities.Organizations;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -17,16 +18,13 @@ internal sealed class CheckOutCommandHandler(
 {
     public async Task<Result<AttendanceResponse>> Handle(CheckOutCommand command, CancellationToken cancellationToken)
     {
-        // Find existing attendance record for today
-        var today = DateOnly.FromDateTime(dateTimeProvider.GetUtcNow());
-        var todayUtc = DateTime.SpecifyKind(today.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-
         AttendanceEntity? attendance = await context.Attendances
             .Include(a => a.Employee)
             .Include(a => a.Shift)
             .SingleOrDefaultAsync(a =>
+                a.Id == command.AttendanceId &&
                 a.EmployeeId == command.EmployeeId &&
-                a.Date == todayUtc,
+                !a.IsDeleted,
                 cancellationToken);
 
         if (attendance is null)
@@ -48,6 +46,7 @@ internal sealed class CheckOutCommandHandler(
 
         // Ensure CheckOutTime is in UTC before saving to database
         DateTime checkOutTimeUtc = dateTimeProvider.EnsureUtc(command.CheckOutTime);
+        checkOutTimeUtc = NormalizeCheckOutTime(checkOutTimeUtc, attendance);
 
         // Validate check-out time is after check-in time
         if (attendance.CheckInTime.HasValue && checkOutTimeUtc <= attendance.CheckInTime.Value)
@@ -89,12 +88,13 @@ internal sealed class CheckOutCommandHandler(
         }
 
         // Create attendance log entry for check-out
+        var attendanceWorkDate = DateOnly.FromDateTime(attendance.Date);
         var attendanceLog = new AttendanceLog
         {
             DateTimeAttend = checkOutTimeUtc,
             CardNo = command.CardNo,
             EmpID = command.EmployeeId.ToString(),
-            DateWork = today,
+            DateWork = attendanceWorkDate,
             TimeAttend = checkOutTimeUtc.TimeOfDay,
             Direct = 2,
             CreatedAt = dateTimeProvider.GetUtcNow()
@@ -139,5 +139,23 @@ internal sealed class CheckOutCommandHandler(
         };
 
         return response;
+    }
+
+    private static DateTime NormalizeCheckOutTime(DateTime checkOutTimeUtc, AttendanceEntity attendance)
+    {
+        if (attendance.CheckInTime.HasValue &&
+            attendance.Shift is not null &&
+            IsOvernightShift(attendance.Shift) &&
+            checkOutTimeUtc <= attendance.CheckInTime.Value)
+        {
+            return checkOutTimeUtc.AddDays(1);
+        }
+
+        return checkOutTimeUtc;
+    }
+
+    private static bool IsOvernightShift(Shift shift)
+    {
+        return shift.EndTime < shift.StartTime;
     }
 }
