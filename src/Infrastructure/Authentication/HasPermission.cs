@@ -1,6 +1,7 @@
 ﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Models;
+using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -60,6 +61,32 @@ internal sealed class HasPermission : IHasPermission
             _logger.LogError(ex, "Error retrieving accessible unit IDs for user {UserId}", user.Id);
             return Enumerable.Empty<Guid>();
         }
+    }
+
+    public async Task<bool> CanManageEmployeeAsync(Guid employeeId, CancellationToken cancellationToken = default)
+    {
+        UserInfoDto user = await _currentUserService.GetUserAsync();
+
+        // Global administrators may manage any employee — no unit restriction.
+        if (user.Role is Role.Admin or Role.SuperAdmin)
+        {
+            return true;
+        }
+
+        // Everyone else is bound to their accessible unit tree. An employee with no
+        // organizational unit is unreachable to a scoped role.
+        Guid? employeeUnitId = await _context.Employees
+            .Where(e => e.Id == employeeId)
+            .Select(e => e.OrganizationalUnitId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (employeeUnitId is not { } unitId)
+        {
+            return false;
+        }
+
+        IEnumerable<Guid> accessibleUnitIds = await GetAccessibleUnitIdsAsync(cancellationToken);
+        return accessibleUnitIds.Contains(unitId);
     }
 
     private async Task<IEnumerable<Guid>> GetAllSubUnitIdsAsync(Guid parentUnitId, CancellationToken cancellationToken)

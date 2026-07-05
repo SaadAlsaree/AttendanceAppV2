@@ -1,3 +1,4 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Attendance.Shared;
@@ -13,11 +14,18 @@ namespace Application.Attendance.CheckOut;
 internal sealed class CheckOutCommandHandler(
     IApplicationDbContext context,
     IDateTimeProvider dateTimeProvider,
-    IAttendanceCalculationService calculationService)
+    IAttendanceCalculationService calculationService,
+    IHasPermission hasPermission)
     : ICommandHandler<CheckOutCommand, AttendanceResponse>
 {
     public async Task<Result<AttendanceResponse>> Handle(CheckOutCommand command, CancellationToken cancellationToken)
     {
+        // Scoped roles (e.g. OrgSupervisor) may only check out employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(command.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<AttendanceResponse>(EmployeeErrors.AccessDenied);
+        }
+
         AttendanceEntity? attendance = await context.Attendances
             .Include(a => a.Employee)
             .Include(a => a.Shift)

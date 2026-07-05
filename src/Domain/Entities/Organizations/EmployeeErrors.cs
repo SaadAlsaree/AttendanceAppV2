@@ -56,4 +56,8 @@ public static class EmployeeErrors
         "Employee.DuplicateEmployeeCheckIn",
         $"الموظف صاحب المعرف = '{employeeId}' لقد قام بالفعل بالتسجيل اليوم");
 
+    public static Error AccessDenied => Error.Forbidden(
+        "Employee.AccessDenied",
+        "ليس لديك صلاحية لإدارة هذا الموظف خارج نطاق جهتك");
+
 }

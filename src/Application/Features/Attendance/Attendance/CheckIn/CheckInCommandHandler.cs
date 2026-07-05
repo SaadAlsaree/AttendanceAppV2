@@ -1,3 +1,4 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Attendance.Shared;
@@ -13,11 +14,18 @@ namespace Application.Attendance.CheckIn;
 internal sealed class CheckInCommandHandler(
     IApplicationDbContext context,
     IDateTimeProvider dateTimeProvider,
-    IAttendanceCalculationService calculationService)
+    IAttendanceCalculationService calculationService,
+    IHasPermission hasPermission)
     : ICommandHandler<CheckInCommand, AttendanceResponse>
 {
     public async Task<Result<AttendanceResponse>> Handle(CheckInCommand command, CancellationToken cancellationToken)
     {
+        // Scoped roles (e.g. OrgSupervisor) may only check in employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(command.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<AttendanceResponse>(EmployeeErrors.AccessDenied);
+        }
+
         // Find existing attendance record for today
         var today = DateOnly.FromDateTime(dateTimeProvider.Now);
         var todayUtc = DateTime.SpecifyKind(today.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);

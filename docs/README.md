@@ -40,7 +40,7 @@ NextAuth authenticates against the API, and subsequent calls carry the API-issue
 | Integrations | [integrations/hikvision-devices.md](integrations/hikvision-devices.md) | Hikvision device integration |
 | Integrations | [integrations/mssql-sync.md](integrations/mssql-sync.md) | Legacy MSSQL event sync |
 | Features | [feature-14-weekly-shift.md](feature-14-weekly-shift.md) | تثبيت الدوام — fixed weekly shift pattern (data model, resolution, API, UI, tests) |
-| Features | [feature-18-employee-fixed-shift-filter.md](feature-18-employee-fixed-shift-filter.md) | الدوام الثابت indicator + filter on the employee list (hasFixedShift flag, filter, badge column, assign action) |
+| Features | [feature-17-org-supervisor.md](feature-17-org-supervisor.md) | مشرف جهة — per-organization operations role (ownership primitive, scoping, endpoint grants, tests) |
 
 > Note: this set was authored starting from the overview and architecture documents
 > ([00](00-system-overview.md), [01](01-architecture-patterns.md)). The remaining linked documents

@@ -109,7 +109,7 @@ internal sealed class Dashboard : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "SecurityOfficer"];
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "SecurityOfficer", "OrgSupervisor"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }))
      .RequireRateLimiting("per-user");

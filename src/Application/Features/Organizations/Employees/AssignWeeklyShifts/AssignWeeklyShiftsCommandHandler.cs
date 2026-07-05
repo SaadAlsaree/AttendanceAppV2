@@ -12,7 +12,8 @@ namespace Application.Features.Organizations.Employees.AssignWeeklyShifts;
 internal sealed class AssignWeeklyShiftsCommandHandler(
     IApplicationDbContext context,
     IDateTimeProvider dateTimeProvider,
-    IUserContext userContext)
+    IUserContext userContext,
+    IHasPermission hasPermission)
     : ICommandHandler<AssignWeeklyShiftsCommand>
 {
     public async Task<Result> Handle(AssignWeeklyShiftsCommand command, CancellationToken cancellationToken)
@@ -24,6 +25,12 @@ internal sealed class AssignWeeklyShiftsCommandHandler(
         if (employee is null)
         {
             return Result.Failure(EmployeeErrors.NotFound(command.Id));
+        }
+
+        // Scoped roles (e.g. OrgSupervisor) may only manage employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(command.Id, cancellationToken))
+        {
+            return Result.Failure(EmployeeErrors.AccessDenied);
         }
 
         // Validate every referenced shift exists, is not deleted and is active
