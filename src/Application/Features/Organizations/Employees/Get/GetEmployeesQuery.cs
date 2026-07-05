@@ -9,5 +9,6 @@ public sealed class GetEmployeesQuery : IQuery<PaginatedResponse<EmployeeRespons
     public int PageSize { get; set; } = 10;
     public Guid? OrganizationalUnitId { get; set; }
     public bool? IsManager { get; set; }
+    public bool? HasFixedShift { get; set; }
     public string? SearchTerm { get; set; }
 }

@@ -49,6 +49,14 @@ internal sealed class GetEmployeesQueryHandler(
             employeesQuery = employeesQuery.Where(e => e.IsManager == query.IsManager);
         }
 
+        // Fixed weekly shift pattern (تثبيت الدوام): has ≥1 EmployeeWeeklyShifts row, or none.
+        if (query.HasFixedShift.HasValue)
+        {
+            employeesQuery = query.HasFixedShift.Value
+                ? employeesQuery.Where(e => e.WeeklyShifts.Any())
+                : employeesQuery.Where(e => !e.WeeklyShifts.Any());
+        }
+
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))
         {
             string searchTerm = query.SearchTerm;
@@ -88,6 +96,7 @@ internal sealed class GetEmployeesQueryHandler(
                 ManagerId = e.ManagerId,
                 ManagerName = e.Manager != null ? e.Manager.FullName : string.Empty,
                 IsManager = e.IsManager ?? false,
+                HasFixedShift = e.WeeklyShifts.Any(),
                 CreatedAt = e.CreatedAt,
                 FaceImageUrl = e.FaceImageUrl,
                 NationalIdFrontUrl = e.NationalIdFrontUrl,
