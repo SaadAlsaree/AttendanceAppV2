@@ -1,3 +1,4 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Entities.Attendance;
@@ -9,7 +10,8 @@ namespace Application.Features.Attendance.AttendanceSchedules.UpdateScheduleDays
 
 internal sealed class UpdateScheduleDaysCommandHandler(
     IApplicationDbContext context,
-    IDateTimeProvider dateTimeProvider)
+    IDateTimeProvider dateTimeProvider,
+    IHasPermission hasPermission)
     : ICommandHandler<UpdateScheduleDaysCommand, bool>
 {
     public async Task<Result<bool>> Handle(UpdateScheduleDaysCommand command, CancellationToken cancellationToken)
@@ -22,6 +24,12 @@ internal sealed class UpdateScheduleDaysCommandHandler(
         if (schedule is null)
         {
             return Result.Failure<bool>(AttendanceScheduleErrors.NotFound(command.AttendanceScheduleId));
+        }
+
+        // Scoped roles (e.g. OrgSupervisor) may only manage employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(schedule.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<bool>(EmployeeErrors.AccessDenied);
         }
 
         // Validate that all schedule day IDs belong to this schedule
