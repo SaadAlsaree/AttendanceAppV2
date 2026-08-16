@@ -3,6 +3,13 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# local workspace + assistant files (docs and the E2E suite are tracked in docs/ and testing/)
+.local
+.local/
+.claude
+.claude/
+CLAUDE.md
+
 # User-specific files
 *.rsuser
 *.suo
@@ -398,3 +405,4 @@ FodyWeavers.xsd
 *.sln.iml
 
 .containers/
+docker-compose.local.yml

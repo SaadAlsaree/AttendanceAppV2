@@ -1342,6 +1342,70 @@ namespace Infrastructure.Database.Migrations
                     b.ToTable("Employees", "public");
                 });
 
+            modelBuilder.Entity("Domain.Entities.Organizations.EmployeeWeeklyShift", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_of_week");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<DateTime?>("DoneProcdureDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("done_procdure_date");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_updated_at");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_updated_by");
+
+                    b.Property<Guid>("ShiftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shift_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_employee_weekly_shifts");
+
+                    b.HasIndex("ShiftId")
+                        .HasDatabaseName("ix_employee_weekly_shifts_shift_id");
+
+                    b.HasIndex("EmployeeId", "DayOfWeek")
+                        .IsUnique()
+                        .HasDatabaseName("ix_employee_weekly_shifts_employee_id_day_of_week");
+
+                    b.ToTable("EmployeeWeeklyShifts", "public");
+                });
+
             modelBuilder.Entity("Domain.Entities.Organizations.Holiday", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2226,6 +2290,27 @@ namespace Infrastructure.Database.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Domain.Entities.Organizations.EmployeeWeeklyShift", b =>
+                {
+                    b.HasOne("Domain.Entities.Organizations.Employee", "Employee")
+                        .WithMany("WeeklyShifts")
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_weekly_shifts_employees_employee_id");
+
+                    b.HasOne("Domain.Entities.Organizations.Shift", "Shift")
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_weekly_shifts_shifts_shift_id");
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("Shift");
+                });
+
             modelBuilder.Entity("Domain.Entities.Organizations.Holiday", b =>
                 {
                     b.HasOne("Domain.Entities.Organizations.OrganizationalUnit", "Organization")
@@ -2336,6 +2421,8 @@ namespace Infrastructure.Database.Migrations
                     b.Navigation("ManagedUnits");
 
                     b.Navigation("Subordinates");
+
+                    b.Navigation("WeeklyShifts");
                 });
 
             modelBuilder.Entity("Domain.Entities.Organizations.OrganizationalUnit", b =>

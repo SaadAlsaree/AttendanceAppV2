@@ -1,7 +1,9 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Attendance.Shared;
 using Domain.Entities.Attendance;
+using Domain.Entities.Organizations;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
@@ -11,7 +13,8 @@ namespace Application.Attendance.Update;
 internal sealed class UpdateAttendanceCommandHandler(
     IApplicationDbContext context,
     IDateTimeProvider dateTimeProvider,
-    IAttendanceCalculationService calculationService)
+    IAttendanceCalculationService calculationService,
+    IHasPermission hasPermission)
     : ICommandHandler<UpdateAttendanceCommand, AttendanceResponse>
 {
     public async Task<Result<AttendanceResponse>> Handle(UpdateAttendanceCommand command, CancellationToken cancellationToken)
@@ -24,6 +27,12 @@ internal sealed class UpdateAttendanceCommandHandler(
         if (attendance is null)
         {
             return Result.Failure<AttendanceResponse>(AttendanceErrors.NotFound(command.AttendanceId));
+        }
+
+        // Scoped roles (e.g. OrgSupervisor) may only manage employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(attendance.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<AttendanceResponse>(EmployeeErrors.AccessDenied);
         }
 
         // Cannot update approved attendance records without proper authorization
@@ -61,7 +70,15 @@ internal sealed class UpdateAttendanceCommandHandler(
 
         attendance.LastUpdatedAt = dateTimeProvider.GetUtcNow();
 
-        // Recalculate metrics if both check-in and check-out times are available and shift is assigned
+        // ساعات العمل تُحسب من الوقتين فقط — بدون الحاجة إلى وردية
+        if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue)
+        {
+            attendance.WorkingMinutes = calculationService.CalculateWorkingMinutes(
+                attendance.CheckInTime.Value,
+                attendance.CheckOutTime.Value);
+        }
+
+        // Recalculate shift-dependent metrics if both times are available and shift is assigned
         if (attendance.CheckInTime.HasValue && attendance.CheckOutTime.HasValue && attendance.Shift is not null)
         {
             AttendanceMetrics metrics = calculationService.CalculateMetrics(
@@ -69,7 +86,6 @@ internal sealed class UpdateAttendanceCommandHandler(
                 attendance.CheckOutTime.Value,
                 attendance.Shift);
 
-            attendance.WorkingMinutes = metrics.WorkingMinutes;
             attendance.LateMinutes = metrics.LateMinutes;
             attendance.EarlyLeaveMinutes = metrics.EarlyLeaveMinutes;
             attendance.OvertimeMinutes = metrics.OvertimeMinutes;

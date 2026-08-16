@@ -19,10 +19,28 @@ internal sealed class GetDashboardStatsQueryHandler(
     IDateTimeProvider dateTimeProvider)
     : IQueryHandler<GetDashboardStatsQuery, DashboardStatsResponse>
 {
+    // When set (OrgSupervisor only) every section is constrained to this unit tree.
+    // Null for Admin/SuperAdmin, which stay global.
+    private IEnumerable<Guid>? _scopedUnitIds;
+
     public async Task<Result<DashboardStatsResponse>> Handle(GetDashboardStatsQuery query, CancellationToken cancellationToken)
     {
         try
         {
+            // OrgSupervisor: constrain the whole dashboard to the caller's own unit tree.
+            // (Keyed to OrgSupervisor only — SuperAdmin often has no unit and must stay global.)
+            UserInfoDto currentUser = await userContext.GetUserAsync();
+            if (currentUser.Role == Role.OrgSupervisor)
+            {
+                IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
+                if (query.DepartmentId.HasValue && !accessibleUnitIds.Contains(query.DepartmentId.Value))
+                {
+                    return Result.Failure<DashboardStatsResponse>(
+                        Error.Forbidden("Dashboard.AccessDenied", "ليس لديك صلاحية لعرض إحصائيات جهة خارج نطاقك"));
+                }
+                _scopedUnitIds = accessibleUnitIds;
+            }
+
             // تحديد نطاق التاريخ مع التعامل الصحيح مع DateTime
             DateTime currentDate = dateTimeProvider.GetUtcNow().Date;
             DateTime startDate = query.StartDate.HasValue
@@ -103,13 +121,10 @@ internal sealed class GetDashboardStatsQueryHandler(
         // جلب إحصائيات الحضور اليوم
         DateTime todayUtc = dateTimeProvider.GetUtcNow().Date;
         DateTime tomorrowUtc = todayUtc.AddDays(1);
-        // جلب إحصائيات الحضور اليوم مع تطبيق الفلاتر والتحقق من التأخير بناءً على الجدول الزمني
+        // جلب إحصائيات الحضور اليوم مع تطبيق الفلاتر
         IQueryable<Domain.Entities.Attendance.Attendance> todayAttendanceQuery = context.Attendances
             .AsNoTracking()
             .Include(a => a.Employee)
-                .ThenInclude(e => e.AttendanceSchedules)
-                    .ThenInclude(ats => ats.ScheduleDays)
-                        .ThenInclude(sd => sd.Shift)
             .Where(a => a.OrganizationId == query.OrganizationId && a.Date >= todayUtc && a.Date < tomorrowUtc);
 
         if (query.DepartmentId.HasValue)
@@ -124,31 +139,9 @@ internal sealed class GetDashboardStatsQueryHandler(
 
         List<Domain.Entities.Attendance.Attendance> todayAttendance = await todayAttendanceQuery.ToListAsync(cancellationToken);
 
-        int lateCount = 0;
-        var today = DateOnly.FromDateTime(dateTimeProvider.GetUtcNow().Date);
-
-        foreach (Domain.Entities.Attendance.Attendance attendance in todayAttendance)
-        {
-            if (attendance.CheckInTime.HasValue && attendance.Employee?.AttendanceSchedules != null)
-            {
-                AttendanceSchedule? activeSchedule = attendance.Employee.AttendanceSchedules
-                    .FirstOrDefault(s => s.IsActive && s.StartDate <= today && (s.EndDate == null || s.EndDate >= today));
-
-                if (activeSchedule?.ScheduleDays != null)
-                {
-                    ScheduleDay? scheduleDay = activeSchedule.ScheduleDays
-                        .FirstOrDefault(d => d.ScheduleDayDate == today);
-
-                    if (scheduleDay?.Shift != null && attendance.CheckInTime.Value.TimeOfDay > scheduleDay.Shift.StartTime.ToTimeSpan())
-                    {
-                        lateCount++;
-                    }
-                }
-            }
-        }
-
+        // اعتمد على اللقطة المخزنة (LateMinutes محسوبة مع فترة السماح) بدل إعادة الحساب من الجدول
         response.PresentToday = todayAttendance.Count(a => a.Status == AttendanceStatus.Present);
-        response.LateToday = lateCount;
+        response.LateToday = todayAttendance.Count(a => a.CheckInTime.HasValue && (a.LateMinutes ?? 0) > 0);
         response.OnLeaveToday = todayAttendance.Count(a => a.Status == AttendanceStatus.Vacation);
         response.RemoteWorkToday = todayAttendance.Count(a => a.Status == AttendanceStatus.Break);
     }
@@ -174,6 +167,11 @@ internal sealed class GetDashboardStatsQueryHandler(
         if (query.EmployeeId.HasValue)
         {
             attendanceQuery = attendanceQuery.Where(a => a.EmployeeId == query.EmployeeId);
+        }
+
+        if (_scopedUnitIds is not null)
+        {
+            attendanceQuery = attendanceQuery.Where(a => a.Employee.OrganizationalUnitId.HasValue && _scopedUnitIds.Contains(a.Employee.OrganizationalUnitId.Value));
         }
 
         List<Domain.Entities.Attendance.Attendance> attendances = await attendanceQuery.ToListAsync(cancellationToken);
@@ -245,11 +243,17 @@ internal sealed class GetDashboardStatsQueryHandler(
     private async Task PopulateDepartmentStats(DashboardStatsResponse response, GetDashboardStatsQuery query, CancellationToken cancellationToken)
     {
         // جلب جميع الأقسام التي لديها موظفين مع سجلات حضور
-        List<OrganizationalUnit> departments = await context.OrganizationalUnits
+        IQueryable<OrganizationalUnit> departmentsQuery = context.OrganizationalUnits
             .AsNoTracking()
             .Include(ou => ou.Employees)
-            .Where(ou => ou.Employees.Any(e => context.Attendances.Any(a => a.EmployeeId == e.Id && a.OrganizationId == query.OrganizationId)))
-            .ToListAsync(cancellationToken);
+            .Where(ou => ou.Employees.Any(e => context.Attendances.Any(a => a.EmployeeId == e.Id && a.OrganizationId == query.OrganizationId)));
+
+        if (_scopedUnitIds is not null)
+        {
+            departmentsQuery = departmentsQuery.Where(ou => _scopedUnitIds.Contains(ou.Id));
+        }
+
+        List<OrganizationalUnit> departments = await departmentsQuery.ToListAsync(cancellationToken);
 
         var departmentStats = new List<DepartmentAttendanceStats>();
         DateTime todayUtc = dateTimeProvider.GetUtcNow();
@@ -294,11 +298,18 @@ internal sealed class GetDashboardStatsQueryHandler(
     private async Task PopulateAttendanceTrends(DashboardStatsResponse response, GetDashboardStatsQuery query, DateTime startDate, DateTime endDate, CancellationToken cancellationToken)
     {
         // الاتجاهات اليومية للآخر 7 أيام
-        List<DailyTrend> dailyTrends = await context.Attendances
+        IQueryable<Domain.Entities.Attendance.Attendance> trendsQuery = context.Attendances
             .AsNoTracking()
             .Where(a => a.OrganizationId == query.OrganizationId &&
                        a.Date >= startDate &&
-                       a.Date < endDate.AddDays(1))
+                       a.Date < endDate.AddDays(1));
+
+        if (_scopedUnitIds is not null)
+        {
+            trendsQuery = trendsQuery.Where(a => a.Employee.OrganizationalUnitId.HasValue && _scopedUnitIds.Contains(a.Employee.OrganizationalUnitId.Value));
+        }
+
+        List<DailyTrend> dailyTrends = await trendsQuery
             .GroupBy(a => a.Date)
             .Select(g => new DailyTrend
             {
@@ -367,6 +378,11 @@ internal sealed class GetDashboardStatsQueryHandler(
             leavesQuery = leavesQuery.Where(l => l.EmployeeId == query.EmployeeId);
         }
 
+        if (_scopedUnitIds is not null)
+        {
+            leavesQuery = leavesQuery.Where(l => l.Employee.OrganizationalUnitId.HasValue && _scopedUnitIds.Contains(l.Employee.OrganizationalUnitId.Value));
+        }
+
         List<Leave> leaves = await leavesQuery.ToListAsync(cancellationToken);
 
         // حساب إحصائيات الإجازات
@@ -424,6 +440,11 @@ internal sealed class GetDashboardStatsQueryHandler(
             attendanceQuery = attendanceQuery.Where(a => a.EmployeeId == query.EmployeeId);
         }
 
+        if (_scopedUnitIds is not null)
+        {
+            attendanceQuery = attendanceQuery.Where(a => a.Employee.OrganizationalUnitId.HasValue && _scopedUnitIds.Contains(a.Employee.OrganizationalUnitId.Value));
+        }
+
         List<Domain.Entities.Attendance.Attendance> attendances = await attendanceQuery.ToListAsync(cancellationToken);
 
         // حساب مقاييس الأداء
@@ -460,6 +481,11 @@ internal sealed class GetDashboardStatsQueryHandler(
         if (query.EmployeeId.HasValue)
         {
             employeesQuery = employeesQuery.Where(e => e.Id == query.EmployeeId);
+        }
+
+        if (_scopedUnitIds is not null)
+        {
+            employeesQuery = employeesQuery.Where(e => e.OrganizationalUnitId.HasValue && _scopedUnitIds.Contains(e.OrganizationalUnitId.Value));
         }
 
         List<EmployeePerformance> topPerformers = await employeesQuery

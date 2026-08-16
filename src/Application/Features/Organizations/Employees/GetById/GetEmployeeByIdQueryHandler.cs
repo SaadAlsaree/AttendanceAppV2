@@ -26,6 +26,8 @@ internal sealed class GetEmployeeByIdQueryHandler(
                 .OrderByDescending(a => a.Date)
                 .Take(30))
                 .ThenInclude(a => a.Shift)
+            .Include(e => e.WeeklyShifts)
+                .ThenInclude(w => w.Shift)
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == query.Id, cancellationToken);
 
@@ -183,7 +185,18 @@ internal sealed class GetEmployeeByIdQueryHandler(
                 LateDays = lateDays,
                 LeaveDays = leaveDays,
                 AttendanceSchedules = attendanceScheduleDto,
-                Attendances = attendanceDtos
+                Attendances = attendanceDtos,
+                WeeklyShifts = employee.WeeklyShifts
+                    .OrderBy(w => w.DayOfWeek)
+                    .Select(w => new WeeklyShiftDto
+                    {
+                        DayOfWeek = (int)w.DayOfWeek,
+                        ShiftId = w.ShiftId,
+                        ShiftName = w.Shift?.Name ?? string.Empty,
+                        StartTime = w.Shift?.StartTime ?? default,
+                        EndTime = w.Shift?.EndTime ?? default
+                    })
+                    .ToList()
             }
         });
     }

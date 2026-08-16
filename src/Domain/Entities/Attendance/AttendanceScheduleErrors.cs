@@ -19,4 +19,8 @@ public static class AttendanceScheduleErrors
     public static Error InactiveSchedule(Guid scheduleId) => Error.Problem(
         "AttendanceSchedule.InactiveSchedule",
         $"The attendance schedule with Id = '{scheduleId}' is inactive");
+
+    public static Error ShiftNotFound() => Error.Problem(
+        "AttendanceSchedule.ShiftNotFound",
+        "One or more of the referenced shifts were not found");
 }

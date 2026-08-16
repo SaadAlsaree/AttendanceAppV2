@@ -96,7 +96,8 @@ if (app.Environment.IsDevelopment())
     // Hangfire Dashboard - available only in development
     app.UseHangfireDashboard("/hangfire", new DashboardOptions
     {
-        Authorization = Array.Empty<IDashboardAuthorizationFilter>() // No auth in development
+        Authorization = Array.Empty<IDashboardAuthorizationFilter>(), // No auth in development
+        IgnoreAntiforgeryToken = true // Allow E2E specs to trigger recurring jobs directly
     });
 }
 
@@ -127,7 +128,13 @@ app.UseSecurityMiddleware();
 // REMARK: If you want to use Controllers, you'll need this.
 app.MapControllers();
 
-app.UseRateLimiter();
+// Rate limiting is disabled in Development so the local E2E/test workflow (rapid
+// scripted requests) isn't throttled. Without this middleware the per-endpoint
+// .RequireRateLimiting metadata is a no-op. Production keeps the limiter.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseRateLimiter();
+}
 
 // Schedule Hangfire recurring jobs
 using (IServiceScope scope = app.Services.CreateScope())

@@ -21,6 +21,25 @@ public class CreateAttendanceScheduleCommandValidator : AbstractValidator<Create
         RuleForEach(c => c.ScheduleDays)
             .SetValidator(new CreateScheduleDayCommandValidator());
 
+        // Every schedule day must fall inside [StartDate, EndDate]
+        RuleFor(c => c.ScheduleDays)
+            .Must((command, days) => days.All(d =>
+                d.ScheduleDayDate >= command.StartDate &&
+                (!command.EndDate.HasValue || d.ScheduleDayDate <= command.EndDate.Value)))
+            .WithMessage("All schedule day dates must fall within the schedule's start and end dates")
+            .When(c => c.ScheduleDays != null && c.ScheduleDays.Any());
+
+        // Schedule day dates must be unique
+        RuleFor(c => c.ScheduleDays)
+            .Must(days => days.Select(d => d.ScheduleDayDate).Distinct().Count() == days.Count)
+            .WithMessage("Schedule day dates must be unique")
+            .When(c => c.ScheduleDays != null && c.ScheduleDays.Any());
+
+        // Active schedule days must reference a shift
+        RuleFor(c => c.ScheduleDays)
+            .Must(days => days.All(d => !d.IsActive || d.ShiftId != Guid.Empty))
+            .WithMessage("Active schedule days must have a shift assigned")
+            .When(c => c.ScheduleDays != null && c.ScheduleDays.Any());
 
         RuleFor(c => c.ScheduleType)
         .IsInEnum()
@@ -47,11 +66,8 @@ public class CreateAttendanceScheduleCommandValidator : AbstractValidator<Create
 
             RuleFor(c => c.ShiftId)
                 .NotEmpty()
-                .WithMessage("Shift ID is required");
-
-            RuleFor(c => c.IsActive)
-                .NotEmpty()
-                .WithMessage("Is active is required");
+                .When(c => c.IsActive)
+                .WithMessage("Shift ID is required for active schedule days");
 
             RuleFor(c => c.Notes)
                 .MaximumLength(500)

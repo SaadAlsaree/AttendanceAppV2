@@ -49,12 +49,21 @@ internal sealed class GetEmployeesQueryHandler(
             employeesQuery = employeesQuery.Where(e => e.IsManager == query.IsManager);
         }
 
+        // Fixed weekly shift pattern (تثبيت الدوام): has ≥1 EmployeeWeeklyShifts row, or none.
+        if (query.HasFixedShift.HasValue)
+        {
+            employeesQuery = query.HasFixedShift.Value
+                ? employeesQuery.Where(e => e.WeeklyShifts.Any())
+                : employeesQuery.Where(e => !e.WeeklyShifts.Any());
+        }
+
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))
         {
             string searchTerm = query.SearchTerm;
             employeesQuery = employeesQuery.Where(e =>
                EF.Functions.Like(e.FullName, $"%{searchTerm}%") ||
-                EF.Functions.Like(e.Code, $"%{searchTerm}%"));
+                EF.Functions.Like(e.Code, $"%{searchTerm}%") ||
+                EF.Functions.Like(e.EmpID, $"%{searchTerm}%"));
         }
 
         // Get total count for pagination
@@ -64,6 +73,12 @@ internal sealed class GetEmployeesQueryHandler(
         {
             return PaginatedResponse<EmployeeResponse>.Empty(query.Page, query.PageSize);
         }
+
+        // Apply deterministic ordering (newest first) so pagination is stable and recently
+        // added employees surface on the first page — required for assigning schedules to new hires.
+        employeesQuery = employeesQuery
+            .OrderByDescending(e => e.CreatedAt)
+            .ThenBy(e => e.FullName);
 
         // Apply pagination
         IReadOnlyList<EmployeeResponse> paginatedEmployees = await employeesQuery
@@ -81,6 +96,7 @@ internal sealed class GetEmployeesQueryHandler(
                 ManagerId = e.ManagerId,
                 ManagerName = e.Manager != null ? e.Manager.FullName : string.Empty,
                 IsManager = e.IsManager ?? false,
+                HasFixedShift = e.WeeklyShifts.Any(),
                 CreatedAt = e.CreatedAt,
                 FaceImageUrl = e.FaceImageUrl,
                 NationalIdFrontUrl = e.NationalIdFrontUrl,

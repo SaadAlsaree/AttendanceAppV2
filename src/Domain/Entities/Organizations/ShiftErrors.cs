@@ -18,4 +18,7 @@ public static class ShiftErrors
 
     public static Error CannotUpdateShiftInUse() =>
         new("Shift.CannotUpdateInUse", "Cannot update a shift that is currently assigned to employees.", ErrorType.Validation);
+
+    public static Error InactiveShift(Guid id) =>
+        new("Shift.Inactive", $"Shift with ID {id} is inactive and cannot be assigned.", ErrorType.Validation);
 }

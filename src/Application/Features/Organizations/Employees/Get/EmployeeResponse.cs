@@ -15,6 +15,8 @@ public sealed class EmployeeResponse
     public string? ManagerName { get; set; }
     public bool IsManager { get; set; }
 
+    /// <summary>True when the employee has a fixed weekly shift pattern (تثبيت الدوام) assigned.</summary>
+    public bool HasFixedShift { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public string? FaceImageUrl { get; set; }

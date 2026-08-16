@@ -1,3 +1,4 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Entities.Attendance;
@@ -9,7 +10,8 @@ namespace Application.Attendance.AttendanceSchedules.Create;
 
 internal sealed class CreateAttendanceScheduleCommandHandler(
     IApplicationDbContext context,
-    IDateTimeProvider dateTimeProvider)
+    IDateTimeProvider dateTimeProvider,
+    IHasPermission hasPermission)
     : ICommandHandler<CreateAttendanceScheduleCommand, bool>
 {
     public async Task<Result<bool>> Handle(CreateAttendanceScheduleCommand command, CancellationToken cancellationToken)
@@ -24,17 +26,26 @@ internal sealed class CreateAttendanceScheduleCommandHandler(
             return Result.Failure<bool>(EmployeeErrors.NotFound(command.EmployeeId));
         }
 
+        // Scoped roles (e.g. OrgSupervisor) may only manage employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(command.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<bool>(EmployeeErrors.AccessDenied);
+        }
 
 
 
-        // Check if schedule already exists for the employee in the date range
+
+        // Check for an active schedule whose date range OVERLAPS the requested range.
+        // Two ranges [aStart, aEnd] and [bStart, bEnd] overlap iff aStart <= bEnd && bStart <= aEnd,
+        // where a null EndDate means an open-ended (infinite) range.
+        DateOnly? newEnd = command.EndDate;
         bool scheduleExists = await context.AttendanceSchedules
             .AsNoTracking()
             .AnyAsync(s =>
                 s.EmployeeId == command.EmployeeId &&
-                s.StartDate <= command.StartDate &&
-                (s.EndDate == null || s.EndDate >= command.StartDate) &&
-                s.IsActive,
+                s.IsActive &&
+                (newEnd == null || s.StartDate <= newEnd.Value) &&
+                (s.EndDate == null || command.StartDate <= s.EndDate.Value),
                 cancellationToken);
 
         if (scheduleExists)
@@ -46,6 +57,25 @@ internal sealed class CreateAttendanceScheduleCommandHandler(
         if (command.EndDate.HasValue && command.StartDate >= command.EndDate.Value)
         {
             return Result.Failure<bool>(AttendanceScheduleErrors.InvalidDateRange(command.StartDate.ToDateTime(TimeOnly.MinValue), command.EndDate.Value.ToDateTime(TimeOnly.MinValue)));
+        }
+
+        // Verify every referenced shift exists (only active days carry a shift)
+        var referencedShiftIds = command.ScheduleDays
+            .Where(d => d.ShiftId != Guid.Empty)
+            .Select(d => d.ShiftId)
+            .Distinct()
+            .ToList();
+
+        if (referencedShiftIds.Count > 0)
+        {
+            int existingShiftCount = await context.Shifts
+                .AsNoTracking()
+                .CountAsync(s => referencedShiftIds.Contains(s.Id), cancellationToken);
+
+            if (existingShiftCount != referencedShiftIds.Count)
+            {
+                return Result.Failure<bool>(AttendanceScheduleErrors.ShiftNotFound());
+            }
         }
 
         // Get Friday and Saturday dates in the date range and merge with user-provided excluded dates

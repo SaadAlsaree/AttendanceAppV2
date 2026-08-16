@@ -17,4 +17,17 @@ public static class ClaimsPrincipalExtensions
     {
         return principal?.FindFirstValue("Role");
     }
+
+    public static bool HasAnyRole(this ClaimsPrincipal? principal, params string[] roles)
+    {
+        if (principal?.Identity?.IsAuthenticated != true)
+        {
+            return false;
+        }
+
+        string? role = principal.GetRole();
+
+        return !string.IsNullOrWhiteSpace(role) &&
+            roles.Contains(role, StringComparer.OrdinalIgnoreCase);
+    }
 }

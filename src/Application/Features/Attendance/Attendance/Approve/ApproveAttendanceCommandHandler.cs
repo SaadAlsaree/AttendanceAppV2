@@ -1,6 +1,8 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Entities.Attendance;
+using Domain.Entities.Organizations;
 using Domain.Entities.Users;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +12,8 @@ namespace Application.Attendance.Approve;
 
 internal sealed class ApproveAttendanceCommandHandler(
     IApplicationDbContext context,
-    IDateTimeProvider dateTimeProvider)
+    IDateTimeProvider dateTimeProvider,
+    IHasPermission hasPermission)
     : ICommandHandler<ApproveAttendanceCommand, AttendanceResponse>
 {
     public async Task<Result<AttendanceResponse>> Handle(ApproveAttendanceCommand command, CancellationToken cancellationToken)
@@ -23,6 +26,12 @@ internal sealed class ApproveAttendanceCommandHandler(
         if (attendance is null)
         {
             return Result.Failure<AttendanceResponse>(AttendanceErrors.NotFound(command.AttendanceId));
+        }
+
+        // Scoped roles (e.g. OrgSupervisor) may only manage employees in their own unit tree.
+        if (!await hasPermission.CanManageEmployeeAsync(attendance.EmployeeId, cancellationToken))
+        {
+            return Result.Failure<AttendanceResponse>(EmployeeErrors.AccessDenied);
         }
 
         // Check if already approved

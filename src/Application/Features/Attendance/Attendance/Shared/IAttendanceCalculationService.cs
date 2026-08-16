@@ -13,6 +13,12 @@ public interface IAttendanceCalculationService
         DateTime checkOutTime,
         Domain.Entities.Organizations.Shift shift,
         IEnumerable<Domain.Entities.Attendance.AttendanceBreak> approvedLeaves);
+
+    /// <summary>
+    /// Elapsed working minutes from raw timestamps — needs no shift.
+    /// Returns null when checkOutTime &lt;= checkInTime (duplicate/reversed scan).
+    /// </summary>
+    int? CalculateWorkingMinutes(DateTime checkInTime, DateTime checkOutTime);
 }
 
 public record AttendanceMetrics(

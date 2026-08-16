@@ -11,7 +11,8 @@ namespace Application.Features.Dashboard.GetQuickStats;
 
 internal sealed class GetQuickStatsQueryHandler(
     IApplicationDbContext context,
-
+    IUserContext userContext,
+    IHasPermission hasPermission,
     IDateTimeProvider dateTimeProvider)
     : IQueryHandler<GetQuickStatsQuery, ApiResponse<QuickStatsResponse>>
 {
@@ -19,6 +20,19 @@ internal sealed class GetQuickStatsQueryHandler(
     {
         try
         {
+            // An OrgSupervisor may only read stats for a unit inside their own tree.
+            // (Keyed to OrgSupervisor only — SuperAdmin often has no unit and must stay global.)
+            UserInfoDto currentUser = await userContext.GetUserAsync();
+            if (currentUser.Role == Role.OrgSupervisor)
+            {
+                IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
+                if (!accessibleUnitIds.Contains(query.OrganizationId))
+                {
+                    return Result.Failure<ApiResponse<QuickStatsResponse>>(
+                        Error.Forbidden("Dashboard.AccessDenied", "ليس لديك صلاحية لعرض إحصائيات جهة خارج نطاقك"));
+                }
+            }
+
             // تحديد التاريخ مع التعامل الصحيح مع DateTime
             DateTime date = query.Date.HasValue
                 ? dateTimeProvider.EnsureUtc(query.Date.Value)

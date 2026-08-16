@@ -45,5 +45,10 @@ services:
          - '10000:10000'
       command: 'azurite-blob --blobHost 0.0.0.0 -l /data'
 
+
+networks:
+  attendance-network:
+    driver: bridge
+    
 volumes:
    attendance_storage:

@@ -35,6 +35,19 @@ public class GetEmployeeByIdVm
 
     public AttendanceScheduleDto AttendanceSchedules { get; set; }
     public List<AttendanceDto> Attendances { get; set; } = new List<AttendanceDto>();
+
+    // الدوام الثابت الأسبوعي
+    public List<WeeklyShiftDto> WeeklyShifts { get; set; } = new List<WeeklyShiftDto>();
+}
+
+public class WeeklyShiftDto
+{
+    /// <summary>.NET convention: Sunday = 0 … Saturday = 6.</summary>
+    public int DayOfWeek { get; set; }
+    public Guid ShiftId { get; set; }
+    public string ShiftName { get; set; } = string.Empty;
+    public TimeOnly StartTime { get; set; }
+    public TimeOnly EndTime { get; set; }
 }
 
 public class AttendanceDto
