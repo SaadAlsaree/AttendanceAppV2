@@ -52,6 +52,20 @@ internal sealed class GetOrganizationalUnitsQueryHandler(
             organizationalUnitsQuery = organizationalUnitsQuery.Where(ou => accessibleUnitIds.Contains(ou.Id));
         }
 
+        if (!string.IsNullOrWhiteSpace(query.SearchText))
+        {
+            string searchText = query.SearchText.Trim();
+            organizationalUnitsQuery = organizationalUnitsQuery.Where(ou =>
+                ou.UnitName.Contains(searchText) ||
+                ou.UnitCode.Contains(searchText));
+        }
+
+        if (query.ParentUnitId.HasValue)
+        {
+            organizationalUnitsQuery = organizationalUnitsQuery.Where(ou =>
+                ou.ParentUnitId == query.ParentUnitId.Value);
+        }
+
         List<OrganizationalUnitResponse> organizationalUnits = await organizationalUnitsQuery.ToListAsync(cancellationToken);
 
         return organizationalUnits;

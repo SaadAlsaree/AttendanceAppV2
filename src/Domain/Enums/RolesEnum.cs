@@ -25,4 +25,8 @@ public enum Role
     SystemUser = 9,
     [Display(Name = "مدير النظام")]
     SystemManager = 10,
+    [Display(Name = "ضابط أمن")]
+    SecurityOfficer = 11,
+    [Display(Name = "مشرف جهة")]
+    OrgSupervisor = 12,
 }

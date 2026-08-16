@@ -22,9 +22,6 @@ internal sealed class Login : IEndpoint
             ICommandHandler<LoginCommand, ApiResponse<LoginResponse>> handler,
             CancellationToken cancellationToken) =>
         {
-            // Debug logging
-            Console.WriteLine($"Login request received - UserLogin: '{request.UserLogin}', Password: '{request.Password}'");
-
             var command = new LoginCommand(request.UserLogin, request.Password);
 
             Result<ApiResponse<LoginResponse>> result = await handler.Handle(command, cancellationToken);

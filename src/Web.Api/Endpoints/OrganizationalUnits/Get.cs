@@ -11,6 +11,8 @@ internal sealed class Get : IEndpoint
 {
     public sealed class Request
     {
+        public string? SearchText { get; set; }
+        public Guid? ParentUnitId { get; set; }
     }
 
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -20,7 +22,9 @@ internal sealed class Get : IEndpoint
             IQueryHandler<GetOrganizationalUnitsQuery, List<OrganizationalUnitResponse>> handler,
             CancellationToken cancellationToken) =>
         {
-            var query = new GetOrganizationalUnitsQuery();
+            var query = new GetOrganizationalUnitsQuery(
+                request.SearchText,
+                request.ParentUnitId);
 
             Result<List<OrganizationalUnitResponse>> result = await handler.Handle(query, cancellationToken);
 

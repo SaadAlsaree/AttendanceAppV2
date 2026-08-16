@@ -35,11 +35,7 @@ internal sealed class LoginCommandHandler(
             return Result.Failure<ApiResponse<LoginResponse>>(UserErrors.NotFoundByUserLogin(command.UserLogin));
         }
 
-        // Debug logging
-        Console.WriteLine($"LoginCommandHandler - UserLogin: '{command.UserLogin}', Password: '{command.Password}'");
-
         bool verified = passwordHasher.Verify(command.Password, user.PasswordHash);
-        Console.WriteLine($"LoginCommandHandler - Verified: '{verified}'");
 
         if (!verified)
         {
