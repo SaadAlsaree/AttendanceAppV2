@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Web.Api.Middleware;
 
@@ -23,7 +24,8 @@ public sealed class CsrfProtectionMiddleware(RequestDelegate next, ILogger<CsrfP
         "/users/new",
         "/auth/register",
         "/health",
-        "/swagger"
+        "/swagger",
+        "/hangfire" // dashboard has its own Admin-only authorization filter + antiforgery handling
     ];
 
     public async Task InvokeAsync(HttpContext context)
@@ -67,9 +69,13 @@ public sealed class CsrfProtectionMiddleware(RequestDelegate next, ILogger<CsrfP
         {
             return false;
         }
-        // Skip validation for API endpoints with Bearer token authentication
-        string authHeader = context.Request.Headers.Authorization.FirstOrDefault() ?? string.Empty;
-        if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        // Skip validation only for endpoints that actually enforce authorization AND where the
+        // caller's Bearer token authenticated successfully. Bearer-authenticated requests are not
+        // CSRF-able (a forged cross-site request cannot attach the Authorization header), but a
+        // merely *present* Bearer header must not bypass CSRF on endpoints that never check auth.
+        // This middleware runs after UseAuthentication/UseAuthorization, so User is populated.
+        if (context.GetEndpoint()?.Metadata.GetMetadata<IAuthorizeData>() is not null
+            && context.User.Identity?.IsAuthenticated == true)
         {
             return false;
         }
