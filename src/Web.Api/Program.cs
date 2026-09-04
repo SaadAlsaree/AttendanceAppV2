@@ -38,6 +38,7 @@ builder.Services.AddCors(option =>
     option.AddPolicy("AllowAll", policy =>
         policy.WithOrigins(
             "http://localhost:3000",
+            "http://localhost:3003", // local dev/E2E frontend (3000 may be taken by another stack)
             "http://10.42.10.67:3000",
             "http://fp28.inss.local",
             "https://fp28.inss.local",
