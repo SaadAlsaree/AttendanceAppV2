@@ -96,13 +96,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerWithUi();
 
     app.ApplyMigrations();
-
-    // Hangfire Dashboard - available only in development, and even then Admin/SuperAdmin only.
-    app.UseHangfireDashboard("/hangfire", new DashboardOptions
-    {
-        Authorization = [new Web.Api.Infrastructure.HangfireDashboardAuthorizationFilter()],
-        IgnoreAntiforgeryToken = true // E2E specs trigger recurring jobs directly (with an admin Bearer token)
-    });
 }
 
 
@@ -122,6 +115,18 @@ app.UseCors("RestrictedOrigins");
 app.UseAuthentication();
 
 app.UseAuthorization();
+
+// Hangfire Dashboard - Development only, Admin/SuperAdmin only. Must be registered AFTER
+// UseAuthentication/UseAuthorization so the dashboard authorization filter sees the
+// authenticated principal (a Bearer token works, which the E2E trigger calls rely on).
+if (app.Environment.IsDevelopment())
+{
+    app.UseHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        Authorization = [new Web.Api.Infrastructure.HangfireDashboardAuthorizationFilter()],
+        IgnoreAntiforgeryToken = true
+    });
+}
 
 // Add anti-forgery middleware
 app.UseAntiforgery();
