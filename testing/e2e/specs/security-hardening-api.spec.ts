@@ -338,6 +338,27 @@ test.describe.serial('security hardening — search scope, /files, write BFLA (A
     }
   });
 
+  // ───────────── round 2: Hangfire auth, server header ─────────────
+
+  test('CLOSED: Hangfire dashboard requires an authenticated Admin', async () => {
+    expect((await ctx.get('/hangfire')).status(), 'anonymous').toBe(401);
+    expect((await ctx.get('/hangfire', { headers: auth(empToken) })).status(), 'Employee').toBe(403);
+    expect((await ctx.get('/hangfire', { headers: auth(adminToken) })).status(), 'Admin bearer').toBe(200);
+  });
+
+  test('CLOSED: server implementation header is not advertised', async () => {
+    const res = await ctx.get('/health');
+    expect(res.status()).toBe(200);
+    expect(res.headers()['server'], 'no Server header').toBeUndefined();
+  });
+
+  test('CLOSED: Employee removed from unused report endpoints', async () => {
+    expect((await ctx.get('/reports/attendance-summary', { headers: auth(empToken) })).status()).toBe(403);
+    expect((await ctx.get('/reports/organizational-summary', { headers: auth(empToken) })).status()).toBe(403);
+    // Employee keeps reports/organization: the organizational-report page grants it by design.
+    expect((await ctx.get('/reports/organization', { headers: auth(empToken) })).status()).not.toBe(403);
+  });
+
   test.afterAll(async () => {
     if (uploadedPng) await ctx.delete(`/files/${uploadedPng}`, { headers: auth(adminToken) }).catch(() => {});
     for (const id of [empUserId, mgrUserId]) {

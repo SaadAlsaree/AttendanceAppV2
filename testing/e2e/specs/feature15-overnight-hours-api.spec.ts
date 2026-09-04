@@ -213,8 +213,9 @@ test.describe.serial('feature 15 — overnight/guard hours after midnight (API)'
     await insertLog(empB.empId, `${D1}T05:07:00Z`, '2', D1);
 
     // Trigger the recurring job that runs CreateAttendanceRecordsAsyncIfNotExists
-    // + UpdateAttendancesCheckInAndCheckOutAsync (dashboard is auth-free in dev).
+    // + UpdateAttendancesCheckInAndCheckOutAsync (with admin Bearer; the dashboard requires Admin).
     const trig = await ctx.post('/hangfire/recurring/trigger', {
+      headers: { Authorization: `Bearer ${token}` }, // dashboard now requires an authenticated Admin/SuperAdmin
       form: { 'jobs[]': 'create-attendance-records' }
     });
     expect(trig.status(), 'hangfire trigger should be accepted').toBeLessThan(400);

@@ -102,6 +102,17 @@ test.describe.serial('security hardening — Employee role UI unaffected', () =>
       });
     }
 
+    // Frontend hardening: security headers present, X-Powered-By gone (next.config.js).
+    const head = await page.request.get('http://localhost:3003/login');
+    expect(head.headers()['x-frame-options']).toBe('DENY');
+    expect(head.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+    expect(head.headers()['x-content-type-options']).toBe('nosniff');
+    expect(head.headers()['x-powered-by']).toBeUndefined();
+
+    // Sidebar no longer offers the Admin-only add/edit employees screen to Employee.
+    await shell.goto('/dashboard');
+    await expect(page.locator('a[href="/employee/addedit-employees"]')).toHaveCount(0);
+
     testInfo.annotations.push({ type: 'api-4xx-5xx', description: failures.join(' | ') || 'none' });
 
     // NOTE: /employee redirects the Employee role home by a pre-existing frontend gate
