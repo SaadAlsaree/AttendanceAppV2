@@ -21,8 +21,6 @@ public static class SecurityMiddlewareExtensions
 
         // View-only (عرض فقط) backstop for security officers — blocks all non-safe methods.
         app.UseMiddleware<ViewOnlyRoleMiddleware>();
-        //app.UseMiddleware<RequestValidationMiddleware>();
-        //app.UseMiddleware<SqlInjectionProtectionMiddleware>();
 
         return app;
     }
