@@ -93,11 +93,11 @@ if (app.Environment.IsDevelopment())
 
     app.ApplyMigrations();
 
-    // Hangfire Dashboard - available only in development
+    // Hangfire Dashboard - available only in development, and even then Admin/SuperAdmin only.
     app.UseHangfireDashboard("/hangfire", new DashboardOptions
     {
-        Authorization = Array.Empty<IDashboardAuthorizationFilter>(), // No auth in development
-        IgnoreAntiforgeryToken = true // Allow E2E specs to trigger recurring jobs directly
+        Authorization = [new Web.Api.Infrastructure.HangfireDashboardAuthorizationFilter()],
+        IgnoreAntiforgeryToken = true // E2E specs trigger recurring jobs directly (with an admin Bearer token)
     });
 }
 
