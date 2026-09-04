@@ -110,7 +110,7 @@ uses `fixed`.
 | Method | Route | Handler | Auth |
 |---|---|---|---|
 | GET | `employees` | `GetEmployeesQuery` → `PaginatedResponse<EmployeeResponse>` | Admin, Employee, Manager, SuperAdmin |
-| GET | `employees/search` | `SearchEmployeeQuery` → `PaginatedResponse<EmployeeResponse>` | Admin, Employee, Manager, SuperAdmin |
+| GET | `employees/search` | `SearchEmployeeQuery` → `PaginatedResponse<EmployeeResponse>` | Admin, Manager, SuperAdmin, SecurityOfficer, OrgSupervisor — unit-scoped for non-Admin; PageSize ≤ 100; sensitive columns Admin-only |
 | GET | `employees/{id:guid}` | `GetEmployeeByIdQuery` → `ApiResponse<GetEmployeeByIdVm>` | Admin, Employee, Manager, SuperAdmin |
 | GET | `employees/profile` | `GetProfileQuery` → `ProfileResponse` | Admin, Employee, Manager, SuperAdmin |
 | PUT | `employees/{id:guid}` | `UpdateEmployeeCommand` | Admin, SuperAdmin |

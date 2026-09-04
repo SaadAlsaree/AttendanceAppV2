@@ -47,6 +47,7 @@
     "test:e2e:feature14-api": "playwright test e2e/specs/feature14-weekly-shift-api.spec.ts --no-deps",
     "test:e2e:feature14-ui": "playwright test e2e/specs/feature14-weekly-shift-ui.spec.ts",
     "test:e2e:feature17": "playwright test e2e/specs/feature17-org-supervisor-api.spec.ts e2e/specs/feature17-org-supervisor-ui.spec.ts",
+    "test:e2e:security": "playwright test e2e/specs/security-hardening-api.spec.ts e2e/specs/security-hardening-employee-ui.spec.ts --no-deps",
     "test:e2e:feature17-api": "playwright test e2e/specs/feature17-org-supervisor-api.spec.ts --no-deps",
     "test:e2e:feature17-ui": "playwright test e2e/specs/feature17-org-supervisor-ui.spec.ts",
     "test:e2e:feature15": "playwright test e2e/specs/feature15-overnight-hours-api.spec.ts",

@@ -1,4 +1,4 @@
-﻿using Application.Abstractions.Storage;
+using Application.Abstractions.Storage;
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -23,6 +23,14 @@ internal sealed class BlobService(BlobServiceClient blobServiceClient) : IBlobSe
 
     public async Task<Result<Guid>> UploadAsync(Stream stream, string contentType, CancellationToken cancellationToken = default)
     {
+        // Whitelist + magic-byte check. The stored content type is the DETECTED one, never the client's.
+        long length = stream.CanSeek ? stream.Length : ImageFileValidation.MaxFileSizeBytes + 1;
+        Result<string> validation = ImageFileValidation.Validate(stream, contentType, length);
+        if (validation.IsFailure)
+        {
+            return Result.Failure<Guid>(validation.Error);
+        }
+
         try
         {
             BlobContainerClient containerClient = await EnsureContainerExistsAsync(cancellationToken);
@@ -32,7 +40,7 @@ internal sealed class BlobService(BlobServiceClient blobServiceClient) : IBlobSe
 
             await blobClient.UploadAsync(
                 stream,
-                new BlobHttpHeaders { ContentType = contentType },
+                new BlobHttpHeaders { ContentType = validation.Value },
                 cancellationToken: cancellationToken);
 
             return Result.Success(fileId);
