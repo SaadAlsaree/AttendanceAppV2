@@ -15,6 +15,9 @@ using Web.Api.Extensions;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+// Do not advertise the server implementation (information disclosure hardening).
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+
 builder.Host.UseSerilog((context, loggerConfig) => loggerConfig.ReadFrom.Configuration(context.Configuration));
 
 builder.Services
@@ -32,7 +35,7 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
 
 builder.Services.AddCors(option =>
-    option.AddPolicy("AllowAll", policy =>
+    option.AddPolicy("RestrictedOrigins", policy =>
         policy.WithOrigins(
             "http://localhost:3000",
             "http://10.42.10.67:3000",
@@ -113,7 +116,7 @@ app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 
 // Add CORS middleware
-app.UseCors("AllowAll");
+app.UseCors("RestrictedOrigins");
 
 app.UseAuthentication();
 
