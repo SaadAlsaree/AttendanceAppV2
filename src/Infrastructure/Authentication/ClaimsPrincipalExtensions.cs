@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 
 namespace Infrastructure.Authentication;
 
@@ -6,7 +6,10 @@ public static class ClaimsPrincipalExtensions
 {
     public static Guid GetUserId(this ClaimsPrincipal? principal)
     {
-        string? userId = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+        string? userId = principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? principal?.FindFirstValue("sub")
+            ?? principal?.FindFirstValue("userId")
+            ?? principal?.FindFirstValue("id");
 
         return Guid.TryParse(userId, out Guid parsedUserId) ?
             parsedUserId :
@@ -15,7 +18,9 @@ public static class ClaimsPrincipalExtensions
 
     public static string? GetRole(this ClaimsPrincipal? principal)
     {
-        return principal?.FindFirstValue("Role");
+        return principal?.FindFirstValue("Role")
+            ?? principal?.FindFirstValue(ClaimTypes.Role)
+            ?? principal?.FindFirstValue("role");
     }
 
     public static bool HasAnyRole(this ClaimsPrincipal? principal, params string[] roles)
