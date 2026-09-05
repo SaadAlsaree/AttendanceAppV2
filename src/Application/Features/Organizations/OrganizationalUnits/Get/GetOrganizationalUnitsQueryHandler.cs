@@ -36,27 +36,21 @@ internal sealed class GetOrganizationalUnitsQueryHandler(
             allUnits = allUnits.Where(ou => accessibleUnitIds.Contains(ou.Id)).ToList();
         }
 
-        var organizationalUnits = allUnits.Select(ou => new OrganizationalUnitResponse
+        if (!string.IsNullOrWhiteSpace(query.SearchText))
         {
-            Id = ou.Id,
-            UnitName = ou.UnitName,
-            UnitCode = ou.UnitCode,
-            UnitDescription = ou.UnitDescription,
-            ParentUnitId = ou.ParentUnitId,
-            ParentUnitName = ou.ParentUnit?.UnitName,
-            Email = ou.Email,
-            PhoneNumber = ou.PhoneNumber,
-            Address = ou.Address,
-            PostalCode = ou.PostalCode,
-            UnitLogo = ou.UnitLogo,
-            UnitLevel = ou.UnitLevel,
-            ManagerId = ou.ManagerId,
-            ManagerName = ou.Manager?.FullName,
-            EmployeeCount = ou.Employees.Count,
-            ChildUnitCount = ou.ChildUnits.Count,
-            CreatedAt = ou.CreatedAt,
-            UpdatedAt = ou.LastUpdatedAt
-        }).ToList();
+            string searchText = query.SearchText.Trim();
+            organizationalUnitsQuery = organizationalUnitsQuery.Where(ou =>
+                ou.UnitName.Contains(searchText) ||
+                ou.UnitCode.Contains(searchText));
+        }
+
+        if (query.ParentUnitId.HasValue)
+        {
+            organizationalUnitsQuery = organizationalUnitsQuery.Where(ou =>
+                ou.ParentUnitId == query.ParentUnitId.Value);
+        }
+
+        List<OrganizationalUnitResponse> organizationalUnits = await organizationalUnitsQuery.ToListAsync(cancellationToken);
 
         return organizationalUnits;
     }

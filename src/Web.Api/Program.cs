@@ -33,10 +33,13 @@ builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
 
 builder.Services.AddCors(option =>
     option.AddPolicy("AllowAll", policy =>
-        // The HTTPS deployment reaches the API same-origin through the nginx
-        // /backend-api/ proxy, so it needs no entry here. https://fp28.inss.local is
-        // listed anyway for direct calls (Swagger, mobile clients, debugging).
-        policy.WithOrigins("http://localhost:3000", "http://10.42.10.67:3000", "http://fp28.inss.local", "http://fp28.inss.local:3000", "http://192.168.25.207:3000", "https://fp28.inss.local") // Add your Flutter app URL here
+        policy.WithOrigins(
+            "http://localhost:3000",
+            "http://10.42.10.67:3000",
+            "http://fp28.inss.local",
+            "https://fp28.inss.local",
+            "http://fp28.inss.local:3000",
+            "http://192.168.25.207:3000") // Add your Flutter app URL here
               .AllowAnyHeader()
               .AllowAnyMethod()
     )
