@@ -214,6 +214,7 @@ test.describe.serial('feature 10 — no-shift working minutes (API)', () => {
     // Best effort — on this branch the Hangfire dashboard may refuse the POST
     // (antiforgery); the recurring job fires every 5 minutes regardless.
     await ctx.post('/hangfire/recurring/trigger', {
+      headers: { Authorization: `Bearer ${token}` }, // dashboard now requires an authenticated Admin/SuperAdmin
       form: { 'jobs[]': 'create-attendance-records' }
     }).catch(() => {});
 

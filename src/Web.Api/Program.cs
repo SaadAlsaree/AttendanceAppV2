@@ -15,6 +15,9 @@ using Web.Api.Extensions;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+// Do not advertise the server implementation (information disclosure hardening).
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+
 builder.Host.UseSerilog((context, loggerConfig) => loggerConfig.ReadFrom.Configuration(context.Configuration));
 
 builder.Services
@@ -32,9 +35,10 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
 
 builder.Services.AddCors(option =>
-    option.AddPolicy("AllowAll", policy =>
+    option.AddPolicy("RestrictedOrigins", policy =>
         policy.WithOrigins(
             "http://localhost:3000",
+            "http://localhost:3003", // local dev/E2E frontend (3000 may be taken by another stack)
             "http://10.42.10.67:3000",
             "http://fp28.inss.local",
             "https://fp28.inss.local",
@@ -92,13 +96,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerWithUi();
 
     app.ApplyMigrations();
-
-    // Hangfire Dashboard - available only in development
-    app.UseHangfireDashboard("/hangfire", new DashboardOptions
-    {
-        Authorization = Array.Empty<IDashboardAuthorizationFilter>(), // No auth in development
-        IgnoreAntiforgeryToken = true // Allow E2E specs to trigger recurring jobs directly
-    });
 }
 
 
@@ -113,11 +110,23 @@ app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 
 // Add CORS middleware
-app.UseCors("AllowAll");
+app.UseCors("RestrictedOrigins");
 
 app.UseAuthentication();
 
 app.UseAuthorization();
+
+// Hangfire Dashboard - Development only, Admin/SuperAdmin only. Must be registered AFTER
+// UseAuthentication/UseAuthorization so the dashboard authorization filter sees the
+// authenticated principal (a Bearer token works, which the E2E trigger calls rely on).
+if (app.Environment.IsDevelopment())
+{
+    app.UseHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        Authorization = [new Web.Api.Infrastructure.HangfireDashboardAuthorizationFilter()],
+        IgnoreAntiforgeryToken = true
+    });
+}
 
 // Add anti-forgery middleware
 app.UseAntiforgery();
