@@ -1,4 +1,4 @@
-using Application.Abstractions.Authentication;
+﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
@@ -20,6 +20,7 @@ internal sealed class GetUserByIdQueryHandler(
     {
         User? user = await context.Users
             .Include(u => u.OrganizationalUnit)
+            .Include(u => u.Site)
             .AsNoTracking()
             .SingleOrDefaultAsync(u => u.Id == query.UserId, cancellationToken);
 
@@ -53,7 +54,9 @@ internal sealed class GetUserByIdQueryHandler(
             LastLoginDate = user.LastLoginDate,
             OrganizationalUnitId = user.OrganizationalUnitId,
             OrganizationalUnitName = user.OrganizationalUnit?.UnitName,
-            OrganizationalUnitCode = user.OrganizationalUnit?.UnitCode
+            OrganizationalUnitCode = user.OrganizationalUnit?.UnitCode,
+            SiteId = user.SiteId,
+            SiteName = user.Site?.SiteName
         };
 
         return response;

@@ -1,4 +1,4 @@
-using Domain.Enums;
+﻿using Domain.Enums;
 
 namespace Application.Features.Users.GetById;
 
@@ -15,4 +15,6 @@ public sealed class UserResponse
     public Guid? OrganizationalUnitId { get; set; }
     public string? OrganizationalUnitName { get; set; }
     public string? OrganizationalUnitCode { get; set; }
+    public Guid? SiteId { get; set; }
+    public string? SiteName { get; set; }
 }

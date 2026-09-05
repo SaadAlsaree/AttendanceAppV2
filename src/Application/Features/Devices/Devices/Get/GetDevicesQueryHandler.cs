@@ -20,13 +20,16 @@ internal sealed class GetDevicesQueryHandler(
 
 
 
-        // Apply search
+        // Apply search.
+        // ILike, not ToUpperInvariant + Contains(StringComparison): EF Core can translate neither,
+        // so the previous form threw "The LINQ expression could not be translated" as soon as a
+        // search term was supplied. ILike is Postgres' case-insensitive LIKE.
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))
         {
-            string searchTerm = query.SearchTerm.ToUpperInvariant();
+            string searchTerm = $"%{query.SearchTerm.Trim()}%";
             devicesQuery = devicesQuery.Where(d =>
-                d.Username != null && d.Username.ToUpperInvariant().Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                d.IpAddress != null && d.IpAddress.ToUpperInvariant().Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+                d.Username != null && EF.Functions.ILike(d.Username, searchTerm) ||
+                d.IpAddress != null && EF.Functions.ILike(d.IpAddress, searchTerm));
         }
 
 

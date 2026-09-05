@@ -1,4 +1,4 @@
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Application.Features.Users.SignUp;
 using Domain.Enums;
 using Infrastructure.Authentication;
@@ -19,6 +19,9 @@ internal sealed class SignUp : IEndpoint
         public string ConfirmPassword { get; set; } = string.Empty;
         public Role Role { get; set; } = Role.User;
         public Guid OrganizationalUnitId { get; set; }
+
+        /// <summary>Required when Role is SiteSupervisor.</summary>
+        public Guid? SiteId { get; set; }
     }
 
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -34,7 +37,8 @@ internal sealed class SignUp : IEndpoint
                 request.Password,
                 request.ConfirmPassword,
                 request.Role,
-                request.OrganizationalUnitId);
+                request.OrganizationalUnitId,
+                request.SiteId);
 
             Result<ApiResponse<SignUpResponse>> result = await handler.Handle(command, cancellationToken);
 

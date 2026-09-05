@@ -1,4 +1,4 @@
-using Application.Abstractions.Authentication;
+﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
@@ -48,12 +48,19 @@ internal sealed class GetUsersQueryHandler(
             usersQuery = usersQuery.Where(u => u.IsActive == query.IsActive.Value);
         }
 
-        // Apply search
+        // Apply search.
+        // ILike (not ToUpperInvariant + Contains(StringComparison)): neither of those translates to
+        // SQL, so the previous form threw "The LINQ expression could not be translated" the moment
+        // a search term was passed. ILike is Postgres' case-insensitive LIKE, which also spares the
+        // index-defeating function call on every row.
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))
         {
-            string searchTerm = query.SearchTerm.ToUpperInvariant();
+            string searchTerm = $"%{query.SearchTerm.Trim()}%";
             usersQuery = usersQuery.Where(u =>
-                u.UserLogin.ToUpperInvariant().Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+                EF.Functions.ILike(u.UserLogin, searchTerm) ||
+                EF.Functions.ILike(u.Username, searchTerm) ||
+                u.OrganizationalUnit != null &&
+                 EF.Functions.ILike(u.OrganizationalUnit.UnitName, searchTerm));
         }
 
         // Apply sorting
@@ -94,7 +101,9 @@ internal sealed class GetUsersQueryHandler(
                 LastLoginDate = u.LastLoginDate,
                 OrganizationalUnitId = u.OrganizationalUnitId,
                 OrganizationalUnitName = u.OrganizationalUnit != null ? u.OrganizationalUnit.UnitName : null,
-                OrganizationalUnitCode = u.OrganizationalUnit != null ? u.OrganizationalUnit.UnitCode : null
+                OrganizationalUnitCode = u.OrganizationalUnit != null ? u.OrganizationalUnit.UnitCode : null,
+                SiteId = u.SiteId,
+                SiteName = u.Site != null ? u.Site.SiteName : null
             })
             .ToListAsync(cancellationToken);
 

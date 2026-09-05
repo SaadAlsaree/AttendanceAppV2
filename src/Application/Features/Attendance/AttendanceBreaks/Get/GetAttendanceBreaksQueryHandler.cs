@@ -1,6 +1,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Entities.Attendance;
+using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -38,10 +39,25 @@ internal sealed class GetAttendanceBreaksQueryHandler(
         {
             breaksQuery = breaksQuery.Where(b => b.BreakType == query.BreakType.Value);
         }
+        // Apply search.
+        // ILike, not ToUpperInvariant + Contains(StringComparison): EF Core can translate neither,
+        // so the previous form threw "The LINQ expression could not be translated" as soon as a
+        // search term was supplied.
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))
         {
-            string searchTerm = query.SearchTerm.ToUpperInvariant();
-            breaksQuery = breaksQuery.Where(b => b.Attendance.Employee.FirstName.ToUpperInvariant().Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || b.BreakType.ToString().ToUpperInvariant().Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+            string term = query.SearchTerm.Trim();
+            string searchTerm = $"%{term}%";
+
+            // BreakType is an enum. Resolving the matching members in memory first keeps the
+            // predicate a plain equality set over the column, which translates cleanly regardless
+            // of how the enum is persisted — safer than relying on ToString() being translatable.
+            var matchingBreakTypes = Enum.GetValues<BreakType>()
+                .Where(breakType => breakType.ToString().Contains(term, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            breaksQuery = breaksQuery.Where(b =>
+                EF.Functions.ILike(b.Attendance.Employee.FirstName, searchTerm) ||
+                matchingBreakTypes.Contains(b.BreakType));
         }
 
         // Sorting

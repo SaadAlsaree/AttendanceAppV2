@@ -1,4 +1,4 @@
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Application.Features.Users.Update;
 using Domain.Enums;
 using Infrastructure.Authentication;
@@ -19,6 +19,10 @@ internal sealed class Update : IEndpoint
         public UserStatus Status { get; set; }
         public bool IsActive { get; set; }
         public Guid? OrganizationalUnitId { get; set; }
+
+        /// <summary>Required when Role is SiteSupervisor. Always send it: the handler assigns
+        /// unconditionally, so omitting it clears the user's site.</summary>
+        public Guid? SiteId { get; set; }
     }
 
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -37,7 +41,8 @@ internal sealed class Update : IEndpoint
                 Role = request.Role,
                 Status = request.Status,
                 IsActive = request.IsActive,
-                OrganizationalUnitId = request.OrganizationalUnitId
+                OrganizationalUnitId = request.OrganizationalUnitId,
+                SiteId = request.SiteId
             };
 
             Result result = await handler.Handle(command, cancellationToken);
