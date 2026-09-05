@@ -29,4 +29,6 @@ public enum Role
     SecurityOfficer = 11,
     [Display(Name = "مشرف جهة")]
     OrgSupervisor = 12,
+    [Display(Name = "مشرف موقع")]
+    SiteSupervisor = 13,
 }

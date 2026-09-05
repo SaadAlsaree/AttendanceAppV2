@@ -1,4 +1,4 @@
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Application.Features.Users.ChangePassword;
 using Infrastructure.Authentication;
 using Microsoft.AspNetCore.Mvc;
@@ -55,7 +55,7 @@ internal sealed class ChangePassword : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "OrgSupervisor"];
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "OrgSupervisor", "SiteSupervisor"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }))
      .RequireRateLimiting("per-user");

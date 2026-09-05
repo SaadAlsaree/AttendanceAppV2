@@ -33,10 +33,17 @@ internal sealed class GetAttendanceReportHandler(
                     Error.NotFound("OrganizationalUnit.NotFound", "الجهة غير موجودة"));
             }
 
-            // An OrgSupervisor may only report on a unit inside their own tree.
-            // (Keyed to OrgSupervisor only — SuperAdmin often has no unit and must stay global.)
+            // A scoped role may only report on a unit inside its own scope.
+            // (Keyed by role name — SuperAdmin often has no unit and must stay global.)
+            //
+            // NOTE for SiteSupervisor: this guard alone is not sufficient. Further down, both
+            // `query.IncludeSubUnits` and BuildSubUnitStatisticsAsync walk the requested unit's
+            // children straight from the database, which would pull in units that are not members
+            // of the site. That is why this endpoint is NOT granted to SiteSupervisor in
+            // Web.Api/Endpoints/Reports/GetAttendanceReport.cs — the guard here is defence in depth
+            // only. Fix those two descents before granting it.
             UserInfoDto currentUser = await userContext.GetUserAsync();
-            if (currentUser.Role == Role.OrgSupervisor)
+            if (currentUser.Role is Role.OrgSupervisor or Role.SiteSupervisor)
             {
                 IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
                 if (!accessibleUnitIds.Contains(query.OrganizationalUnitId))

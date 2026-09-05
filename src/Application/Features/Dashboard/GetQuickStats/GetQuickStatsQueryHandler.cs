@@ -1,4 +1,4 @@
-using Application.Abstractions.Authentication;
+﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
@@ -20,10 +20,11 @@ internal sealed class GetQuickStatsQueryHandler(
     {
         try
         {
-            // An OrgSupervisor may only read stats for a unit inside their own tree.
-            // (Keyed to OrgSupervisor only — SuperAdmin often has no unit and must stay global.)
+            // A scoped role may only read stats for a unit inside its own scope — the
+            // OrgSupervisor's tree, or the SiteSupervisor's explicit site membership.
+            // (Keyed by role name — SuperAdmin often has no unit and must stay global.)
             UserInfoDto currentUser = await userContext.GetUserAsync();
-            if (currentUser.Role == Role.OrgSupervisor)
+            if (currentUser.Role is Role.OrgSupervisor or Role.SiteSupervisor)
             {
                 IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
                 if (!accessibleUnitIds.Contains(query.OrganizationId))

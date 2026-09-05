@@ -48,9 +48,17 @@ internal sealed class OrganizationalUnitConfiguration : IEntityTypeConfiguration
             .HasForeignKey(u => u.ManagerId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Deleting a site must orphan its units, never cascade into the org tree.
+        builder.HasOne(u => u.Site)
+            .WithMany(s => s.OrganizationalUnits)
+            .HasForeignKey(u => u.SiteId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Indexes
         builder.HasIndex(u => u.UnitCode).IsUnique();
         builder.HasIndex(u => u.UnitName);
         builder.HasIndex(u => u.ParentUnitId);
+        // Every scoped request from a SiteSupervisor filters on this column.
+        builder.HasIndex(u => u.SiteId);
     }
 }

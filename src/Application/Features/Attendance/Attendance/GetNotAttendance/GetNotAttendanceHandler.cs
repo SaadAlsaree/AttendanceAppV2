@@ -106,25 +106,31 @@ internal sealed class GetNotAttendanceHandler(
                 query.PageSize);
         }
 
-        // Get all approved leaves that might cover any of the attendance dates
+        // Get all active leaves that might cover any of the attendance dates
         // Extract unique employee IDs and date range from attendance records
         var employeeIds = allAttendances.Select(a => a.EmployeeId).Distinct().ToList();
         DateTime minDate = allAttendances.Min(a => a.Date.Date);
         DateTime maxDate = allAttendances.Max(a => a.Date.Date);
 
-        // Query approved leaves that could potentially cover any attendance date
-        List<Domain.Entities.Attendance.Leave> approvedLeaves = employeeIds.Count > 0
+        // Query active leaves that could potentially cover any attendance date.
+        // "Active" is every status except Rejected and Cancelled — the same rule the
+        // create/update handlers use to decide whether a leave blocks an overlapping
+        // one. Filtering on Approved alone left an employee sitting in this list from
+        // the moment their leave was filed until a manager approved it, even though
+        // the leave was recorded against that exact date.
+        List<Domain.Entities.Attendance.Leave> activeLeaves = employeeIds.Count > 0
             ? await context.Leaves
                 .Where(l =>
                     employeeIds.Contains(l.EmployeeId) &&
-                    l.Status == LeaveStatus.Approved &&
+                    l.Status != LeaveStatus.Rejected &&
+                    l.Status != LeaveStatus.Cancelled &&
                     l.StartDate.Date <= maxDate &&
                     l.EndDate.Date >= minDate)
                 .ToListAsync(cancellationToken)
             : new List<Domain.Entities.Attendance.Leave>();
 
-        // Create a lookup for quick checking if a date is covered by an approved leave
-        var leaveCoverageLookup = approvedLeaves
+        // Create a lookup for quick checking if a date is covered by an active leave
+        var leaveCoverageLookup = activeLeaves
             .SelectMany(l => Enumerable.Range(0, (l.EndDate.Date - l.StartDate.Date).Days + 1)
                 .Select(offset => l.StartDate.Date.AddDays(offset))
                 .Select(date => (l.EmployeeId, Date: date)))
@@ -132,7 +138,7 @@ internal sealed class GetNotAttendanceHandler(
 
         // Filter to EXCLUDE records where:
         // 1. The date is in ExcludedDates
-        // 2. There's an approved leave covering this date
+        // 2. There's an active leave covering this date
         // Query active attendance schedules for the relevant employees and date range
         var minDateOnly = DateOnly.FromDateTime(minDate);
         var maxDateOnly = DateOnly.FromDateTime(maxDate);
@@ -150,13 +156,13 @@ internal sealed class GetNotAttendanceHandler(
 
         // Filter to EXCLUDE records where:
         // 1. The date is in ExcludedDates (checked against ALL active schedules for that employee)
-        // 2. There's an approved leave covering this date
+        // 2. There's an active leave covering this date
         var filteredAttendances = allAttendances
             .Where(a =>
             {
                 var attendanceDate = DateOnly.FromDateTime(a.Date);
 
-                // Exclude if there's an approved leave covering this date
+                // Exclude if there's an active leave covering this date
                 if (leaveCoverageLookup.Contains((a.EmployeeId, a.Date.Date)))
                 {
                     return false;
@@ -191,11 +197,11 @@ internal sealed class GetNotAttendanceHandler(
             .ToList();
 
         // Create a dictionary for quick lookup: (EmployeeId, Date) -> Leave
-        // Reuse the approvedLeaves we already loaded, filtered to only those covering the paginated attendance list
+        // Reuse the activeLeaves we already loaded, filtered to only those covering the paginated attendance list
         var attendanceKeys = attendanceList
             .Select(a => (a.EmployeeId, a.Date.Date))
             .ToHashSet();
-        var leaveLookup = approvedLeaves
+        var leaveLookup = activeLeaves
             .Where(l => attendanceKeys.Any(ak =>
                 ak.EmployeeId == l.EmployeeId &&
                 ak.Date >= l.StartDate.Date &&

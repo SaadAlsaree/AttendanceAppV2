@@ -36,6 +36,8 @@ internal sealed class UserContext : IUserContext
             RoleName = x.Role.ToString(),
             OrganizationalUnitId = x.OrganizationalUnitId,
             OrganizationalUnitName = x.OrganizationalUnit != null ? x.OrganizationalUnit.UnitName : string.Empty,
+            SiteId = x.SiteId,
+            SiteName = x.Site != null ? x.Site.SiteName : string.Empty,
             IsActive = x.IsActive,
             LastLoginDate = x.LastLoginDate,
             Status = x.Status

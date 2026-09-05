@@ -43,8 +43,14 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasForeignKey(u => u.OrganizationalUnitId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasOne(u => u.Site)
+            .WithMany(s => s.Users)
+            .HasForeignKey(u => u.SiteId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Indexes
         builder.HasIndex(u => u.UserLogin).IsUnique();
+        builder.HasIndex(u => u.SiteId);
 
     }
 }

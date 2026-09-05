@@ -1,4 +1,4 @@
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Application.Features.Reports.GetOrganizationReport;
 using Infrastructure.Authentication;
 using SharedKernel;
@@ -60,7 +60,7 @@ internal sealed class GetOrganizationReport : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "OrgSupervisor"];
+         string[] allowedRoles = ["Admin", "Employee", "Manager", "SuperAdmin", "OrgSupervisor", "SiteSupervisor"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }))
         .WithName("GetOrganizationReport")

@@ -12,14 +12,35 @@ namespace Application.Features.Reports.GetOrganizationalSummary;
 internal sealed class GetOrganizationalSummaryHandler(
     IApplicationDbContext context,
     IUserContext userContext,
+    IHasPermission hasPermission,
     IDateTimeProvider dateTimeProvider)
     : IQueryHandler<GetOrganizationalSummaryQuery, ApiResponse<OrganizationalSummaryVm>>
 {
+    /// <summary>
+    /// The units this request may report on, or <c>null</c> for an unscoped (Admin/SuperAdmin)
+    /// caller. Every unit-set derivation below must pass through this, otherwise a scoped role
+    /// reads the whole organization.
+    /// </summary>
+    private HashSet<Guid>? _scopedUnitIds;
+
     public async Task<Result<ApiResponse<OrganizationalSummaryVm>>> Handle(GetOrganizationalSummaryQuery query, CancellationToken cancellationToken)
     {
         try
         {
             UserInfoDto user = await userContext.GetUserAsync();
+
+            // This handler had no role check at all: it loaded every unit and counted every
+            // employee regardless of caller. Resolve the caller's scope up front.
+            if (user.Role is not (Role.Admin or Role.SuperAdmin))
+            {
+                _scopedUnitIds = (await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken)).ToHashSet();
+
+                if (_scopedUnitIds.Count == 0)
+                {
+                    return Result.Failure<ApiResponse<OrganizationalSummaryVm>>(
+                        Error.Forbidden("GetOrganizationalSummary.AccessDenied", "لا توجد وحدات تنظيمية ضمن صلاحيتك"));
+                }
+            }
             // Use provided date or default to the current local date (Today)
             DateTime rawDate = query.Date ?? dateTimeProvider.GetUtcNow().AddDays(-1);
             var reportDate = DateTime.SpecifyKind(rawDate, DateTimeKind.Utc);
@@ -29,6 +50,13 @@ internal sealed class GetOrganizationalSummaryHandler(
             var units = new List<OrganizationalUnit>();
             if (query.OrganizationalUnitId.HasValue)
             {
+                // A scoped caller may only ask about a unit inside their own scope.
+                if (_scopedUnitIds is not null && !_scopedUnitIds.Contains(query.OrganizationalUnitId.Value))
+                {
+                    return Result.Failure<ApiResponse<OrganizationalSummaryVm>>(
+                        Error.Forbidden("GetOrganizationalSummary.AccessDenied", "لا تملك صلاحية على هذه الوحدة"));
+                }
+
                 if (query.IncludeSubUnits)
                 {
                     // الحصول على الوحدة وجميع الوحدات الفرعية
@@ -45,14 +73,25 @@ internal sealed class GetOrganizationalSummaryHandler(
                     }
                 }
             }
+            else if (_scopedUnitIds is not null)
+            {
+                units = await context.OrganizationalUnits
+                    .Where(u => _scopedUnitIds.Contains(u.Id) && !u.IsDeleted)
+                    .ToListAsync(cancellationToken);
+            }
             else
             {
                 // الحصول على جميع الوحدات
                 units = await context.OrganizationalUnits.ToListAsync(cancellationToken);
             }
 
-            // فلترة الوحدات التي يكون مستواها بين 1-3
-            units = units.Where(u => u.UnitLevel.HasValue && u.UnitLevel.Value >= 1 && u.UnitLevel.Value <= 3).ToList();
+            // فلترة الوحدات التي يكون مستواها بين 1-3.
+            // Skipped for a scoped caller: their scope is already the constraint, and a site may
+            // legitimately contain a level-4 unit, which this filter would silently drop.
+            if (_scopedUnitIds is null)
+            {
+                units = units.Where(u => u.UnitLevel.HasValue && u.UnitLevel.Value >= 1 && u.UnitLevel.Value <= 3).ToList();
+            }
 
             if (!units.Any())
             {
@@ -63,13 +102,22 @@ internal sealed class GetOrganizationalSummaryHandler(
             var unitIds = units.Select(u => u.Id).ToList();
 
             // إحصائيات عامة
-            // عدد الموظفين
-            int totalEmployees = await context.Employees.CountAsync(cancellationToken);
+            // عدد الموظفين — محصور بالوحدات المشمولة بالتقرير.
+            // This was an unfiltered global CountAsync for every caller, which leaked the whole
+            // organization's headcount into an otherwise unit-scoped report.
+            int totalEmployees = await context.Employees
+                .Where(e => unitIds.Contains(e.OrganizationalUnitId ?? Guid.Empty))
+                .CountAsync(cancellationToken);
+
+            // The four totals below used to test `unitIds.Contains(user.OrganizationalUnitId)` —
+            // a constant per request rather than a per-row filter, so they evaluated to 0 whenever
+            // the caller's own unit was not itself in the report (always, for a caller with no
+            // unit). They now filter on the row's own employee unit, matching BuildUnitSummary.
 
             // عدد الحضور
             int totalAttendances = await context.Attendances
                 .Where(a => a.Date.Date == reportDate &&
-                           unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty) &&
+                           unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                            (a.CheckInTime != null || a.CheckOutTime != null))
                 .CountAsync(cancellationToken);
 
@@ -77,7 +125,7 @@ internal sealed class GetOrganizationalSummaryHandler(
             int totalLeaves = await context.Leaves
                 .Where(l => l.StartDate.Date <= reportDate &&
                            l.EndDate.Date >= reportDate &&
-                           unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty))
+                           unitIds.Contains(l.Employee.OrganizationalUnitId ?? Guid.Empty))
                 .CountAsync(cancellationToken);
 
             int totalNotAttendances = totalEmployees - totalAttendances - totalLeaves;
@@ -86,7 +134,7 @@ internal sealed class GetOrganizationalSummaryHandler(
             int totalLate = await context.Attendances
                 .Where(a => a.Date.Date == reportDate &&
                            a.Status == AttendanceStatus.Late &&
-                           unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty) &&
+                           unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                            (a.CheckInTime != null || a.CheckOutTime != null))
                 .CountAsync(cancellationToken);
 
@@ -94,7 +142,7 @@ internal sealed class GetOrganizationalSummaryHandler(
             int totalOvertime = await context.Attendances
             .Where(a => a.Date.Date == reportDate &&
                        a.Status == AttendanceStatus.Overtime &&
-                       unitIds.Contains(user.OrganizationalUnitId ?? Guid.Empty) &&
+                       unitIds.Contains(a.Employee.OrganizationalUnitId ?? Guid.Empty) &&
                        (a.CheckInTime != null || a.CheckOutTime != null))
             .CountAsync(cancellationToken);
 
@@ -153,6 +201,14 @@ internal sealed class GetOrganizationalSummaryHandler(
         }
 
         AddUnitAndChildren(unitId);
+
+        // A scoped caller must never see a descendant that is outside their scope. For a site,
+        // whose membership is non-transitive, this reduces the walk to the member units only.
+        if (_scopedUnitIds is not null)
+        {
+            result = result.Where(u => _scopedUnitIds.Contains(u.Id)).ToList();
+        }
+
         return result;
     }
 
@@ -264,6 +320,14 @@ internal sealed class GetOrganizationalSummaryHandler(
         }
 
         AddUnitAndChildren(unitId);
+
+        // Same rule as GetUnitWithSubUnits: per-unit statistics must not roll up employees from
+        // descendants the caller cannot see.
+        if (_scopedUnitIds is not null)
+        {
+            result = result.Where(_scopedUnitIds.Contains).ToList();
+        }
+
         return result;
     }
 }

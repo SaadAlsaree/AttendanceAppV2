@@ -1,5 +1,7 @@
-﻿using Application.Abstractions.Data;
+﻿using Application.Abstractions.Authentication;
+using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Models;
 using Domain.Entities.Organizations;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +10,9 @@ using SharedKernel;
 namespace Application.Features.Organizations.Employees.Search;
 
 internal sealed class SearchEmployeeHandler(
-    IApplicationDbContext context)
+    IApplicationDbContext context,
+    IHasPermission hasPermission,
+    IUserContext userContext)
     : IQueryHandler<SearchEmployeeQuery, PaginatedResponse<EmployeeResponse>>
 {
     public async Task<Result<PaginatedResponse<EmployeeResponse>>> Handle(SearchEmployeeQuery query, CancellationToken cancellationToken)
@@ -18,6 +22,23 @@ internal sealed class SearchEmployeeHandler(
             .Include(e => e.Manager)
             .Include(e => e.User)
             .AsNoTracking();
+
+        // This search had no scoping at all, so any role reaching the endpoint could read the whole
+        // employee directory. Mirror GetEmployeesQueryHandler.
+        UserInfoDto currentUser = await userContext.GetUserAsync();
+        if (currentUser.Role != Role.Admin)
+        {
+            IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
+            var accessibleUnitIdList = accessibleUnitIds.ToList();
+
+            if (accessibleUnitIdList.Count == 0)
+            {
+                return PaginatedResponse<EmployeeResponse>.Empty(query.Page, query.PageSize);
+            }
+
+            employeesQuery = employeesQuery.Where(e =>
+                e.OrganizationalUnitId.HasValue && accessibleUnitIdList.Contains(e.OrganizationalUnitId.Value));
+        }
 
         // Apply search term filter (required for search)
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))

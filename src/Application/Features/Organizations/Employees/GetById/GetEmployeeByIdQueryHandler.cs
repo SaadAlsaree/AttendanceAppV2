@@ -1,14 +1,19 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Models;
 using Domain.Entities.Attendance;
 using Domain.Entities.Organizations;
+using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Features.Organizations.Employees.GetById;
 
 internal sealed class GetEmployeeByIdQueryHandler(
-    IApplicationDbContext context)
+    IApplicationDbContext context,
+    IHasPermission hasPermission,
+    IUserContext userContext)
     : IQueryHandler<GetEmployeeByIdQuery, ApiResponse<GetEmployeeByIdVm>>
 {
     public async Task<Result<ApiResponse<GetEmployeeByIdVm>>> Handle(GetEmployeeByIdQuery query, CancellationToken cancellationToken)
@@ -34,6 +39,21 @@ internal sealed class GetEmployeeByIdQueryHandler(
         if (employee is null)
         {
             return Result.Failure<ApiResponse<GetEmployeeByIdVm>>(EmployeeErrors.NotFound(query.Id));
+        }
+
+        // This lookup had no scoping, so any role reaching the endpoint could read any employee by
+        // id regardless of unit. Return NotFound rather than AccessDenied — a scoped caller should
+        // not be able to confirm that an out-of-scope employee exists.
+        UserInfoDto currentUser = await userContext.GetUserAsync();
+        if (currentUser.Role != Role.Admin)
+        {
+            IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
+
+            if (employee.OrganizationalUnitId is not { } employeeUnitId ||
+                !accessibleUnitIds.Contains(employeeUnitId))
+            {
+                return Result.Failure<ApiResponse<GetEmployeeByIdVm>>(EmployeeErrors.NotFound(query.Id));
+            }
         }
 
         // Get the active attendance schedule

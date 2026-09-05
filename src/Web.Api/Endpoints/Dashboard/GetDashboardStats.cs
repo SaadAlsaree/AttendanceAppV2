@@ -1,4 +1,4 @@
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Application.Features.Dashboard.GetDashboardStats;
 using Infrastructure.Authentication;
 using SharedKernel;
@@ -55,7 +55,7 @@ internal sealed class GetDashboardStats : IEndpoint
          }
 
          // OR logic: إذا كان لديه أي Role من الأدوار المطلوبة
-         string[] allowedRoles = ["Admin", "SuperAdmin", "OrgSupervisor"];
+         string[] allowedRoles = ["Admin", "SuperAdmin", "OrgSupervisor", "SiteSupervisor"];
          return allowedRoles.Contains(userRole, StringComparer.OrdinalIgnoreCase);
      }))
      .RequireRateLimiting("per-user");

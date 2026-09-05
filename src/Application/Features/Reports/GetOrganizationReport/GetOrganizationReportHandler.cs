@@ -12,7 +12,7 @@ namespace Application.Features.Reports.GetOrganizationReport;
 
 internal class GetOrganizationReportHandler(
     IApplicationDbContext context,
-    //IHasPermission hasPermission,
+    IHasPermission hasPermission,
     IDateTimeProvider dateTimeProvider,
     IUserContext userContext
     )
@@ -24,6 +24,15 @@ internal class GetOrganizationReportHandler(
         {
             // Get user info
             UserInfoDto user = await userContext.GetUserAsync();
+
+            // A SiteSupervisor reports on their site's explicit unit list. They normally have no
+            // OrganizationalUnitId at all, so the unit-based path below would fail with NotFound.
+            // Note there is deliberately no sub-unit descent here: site membership is
+            // non-transitive, and BuildOrganizationReportAsync already takes a flat unit list.
+            if (user.Role == Role.SiteSupervisor)
+            {
+                return await HandleSiteSupervisorAsync(query, cancellationToken);
+            }
 
             // Validate organizational unit exists
             OrganizationalUnit? organizationalUnit = await context.OrganizationalUnits
@@ -73,6 +82,62 @@ internal class GetOrganizationReportHandler(
             return Result.Failure<ApiResponse<GetOrganizationReportVm>>(
                 Error.Failure("Report.GenerationFailed", $"فشل في إنشاء التقرير: {ex.Message}"));
         }
+    }
+
+    /// <summary>
+    /// Builds the report over a site's explicit unit list. Deliberately never calls
+    /// <see cref="GetSubUnitIdsRecursiveAsync"/> — a site's membership does not extend to the
+    /// children of its member units, so descending the tree here would report on units the
+    /// supervisor has no access to.
+    /// </summary>
+    private async Task<Result<ApiResponse<GetOrganizationReportVm>>> HandleSiteSupervisorAsync(
+        GetOrganizationReportQuery query,
+        CancellationToken cancellationToken)
+    {
+        var siteUnitIds = (await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken)).ToList();
+
+        if (siteUnitIds.Count == 0)
+        {
+            return Result.Failure<ApiResponse<GetOrganizationReportVm>>(SiteErrors.NoSiteAssigned);
+        }
+
+        // If the caller narrowed to one unit it must be a member of their site; otherwise report
+        // across the whole site.
+        List<Guid> targetUnitIds;
+        if (query.OrganizationalUnitId != Guid.Empty)
+        {
+            if (!siteUnitIds.Contains(query.OrganizationalUnitId))
+            {
+                return Result.Failure<ApiResponse<GetOrganizationReportVm>>(SiteErrors.AccessDenied);
+            }
+
+            targetUnitIds = new List<Guid> { query.OrganizationalUnitId };
+        }
+        else
+        {
+            targetUnitIds = siteUnitIds;
+        }
+
+        DateOnly reportDate = query.Date ?? DateOnly.FromDateTime(dateTimeProvider.GetCurrentLocalTime());
+
+        GetOrganizationReportVm report = await BuildOrganizationReportAsync(
+            targetUnitIds,
+            reportDate,
+            query.ShiftId,
+            query.SearchTerm,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        report.Date = dateTimeProvider.EnsureUtc(reportDate.ToDateTime(TimeOnly.MinValue));
+        report.GeneratedAt = dateTimeProvider.GetCurrentLocalTime();
+
+        return Result.Success(new ApiResponse<GetOrganizationReportVm>
+        {
+            Data = report,
+            Message = "تم إنشاء تقرير الموقع بنجاح",
+            IsSuccess = true
+        });
     }
 
     private async Task<List<Guid>> GetSubUnitIdsRecursiveAsync(Guid parentUnitId, CancellationToken cancellationToken)

@@ -20,5 +20,10 @@ public sealed class User : AuditableEntity<Guid>
     public Guid? OrganizationalUnitId { get; set; }
     public OrganizationalUnit? OrganizationalUnit { get; set; }
 
-
+    /// <summary>
+    /// The site this user supervises. Only meaningful for <see cref="Role.SiteSupervisor"/>, whose
+    /// access scope is the site's explicit unit list — never <see cref="OrganizationalUnitId"/>.
+    /// </summary>
+    public Guid? SiteId { get; set; }
+    public Site? Site { get; set; }
 }

@@ -64,6 +64,14 @@ and device-sync path build rows directly, not through these command handlers, so
 they are unaffected.)
 
 ### c) Reports are NOT granted; the dashboard is (and is scoped)
+
+> **⚠️ This section is out of date.** `Reports/GetOrganizationReport.cs` and
+> `Reports/GetOrganizationalSummary.cs` were later granted to `OrgSupervisor`, which — until
+> [feature-19](./feature-19-site.md) fixed it — exposed the caller-blind `organizational-summary`
+> handler described below to a scoped role. That handler is now scoped; the rest of this section
+> still describes the original intent, not the current grants. Verify against the `allowedRoles`
+> arrays in `Web.Api/Endpoints/Reports/` before relying on it.
+
 Reports are an admin/manager surface and stay **fully closed** to OrgSupervisor
 — every report endpoint (`attendance-summary`, `organization`,
 `organizational-summary`, `overtime`, `employee`) returns **403**, and the whole

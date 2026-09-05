@@ -41,6 +41,7 @@ NextAuth authenticates against the API, and subsequent calls carry the API-issue
 | Integrations | [integrations/mssql-sync.md](integrations/mssql-sync.md) | Legacy MSSQL event sync |
 | Features | [feature-14-weekly-shift.md](feature-14-weekly-shift.md) | تثبيت الدوام — fixed weekly shift pattern (data model, resolution, API, UI, tests) |
 | Features | [feature-17-org-supervisor.md](feature-17-org-supervisor.md) | مشرف جهة — per-organization operations role (ownership primitive, scoping, endpoint grants, tests) |
+| Features | [feature-19-site.md](feature-19-site.md) | الموقع — explicit, non-transitive grouping of organizational units + the view-only مشرف موقع role |
 
 > Note: this set was authored starting from the overview and architecture documents
 > ([00](00-system-overview.md), [01](01-architecture-patterns.md)). The remaining linked documents

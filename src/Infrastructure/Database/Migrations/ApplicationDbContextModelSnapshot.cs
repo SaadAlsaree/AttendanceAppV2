@@ -1546,6 +1546,10 @@ namespace Infrastructure.Database.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("postal_code");
 
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("site_id");
+
                     b.Property<string>("UnitCode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1580,6 +1584,9 @@ namespace Infrastructure.Database.Migrations
 
                     b.HasIndex("ParentUnitId")
                         .HasDatabaseName("ix_organizational_units_parent_unit_id");
+
+                    b.HasIndex("SiteId")
+                        .HasDatabaseName("ix_organizational_units_site_id");
 
                     b.HasIndex("UnitCode")
                         .IsUnique()
@@ -1685,6 +1692,84 @@ namespace Infrastructure.Database.Migrations
                         .HasDatabaseName("ix_shifts_shift_type");
 
                     b.ToTable("Shifts", "public");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Organizations.Site", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("address");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<DateTime?>("DoneProcdureDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("done_procdure_date");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_updated_at");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_updated_by");
+
+                    b.Property<string>("SiteCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("site_code");
+
+                    b.Property<string>("SiteName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("site_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sites");
+
+                    b.HasIndex("SiteCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_sites_site_code");
+
+                    b.HasIndex("SiteName")
+                        .HasDatabaseName("ix_sites_site_name");
+
+                    b.ToTable("Sites", "public");
                 });
 
             modelBuilder.Entity("Domain.Entities.Organizations.WorkLocation", b =>
@@ -1930,6 +2015,10 @@ namespace Infrastructure.Database.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("role");
 
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("site_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1955,6 +2044,9 @@ namespace Infrastructure.Database.Migrations
 
                     b.HasIndex("OrganizationalUnitId")
                         .HasDatabaseName("ix_users_organizational_unit_id");
+
+                    b.HasIndex("SiteId")
+                        .HasDatabaseName("ix_users_site_id");
 
                     b.HasIndex("UserLogin")
                         .IsUnique()
@@ -2337,9 +2429,17 @@ namespace Infrastructure.Database.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_organizational_units_organizational_units_parent_unit_id");
 
+                    b.HasOne("Domain.Entities.Organizations.Site", "Site")
+                        .WithMany("OrganizationalUnits")
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_organizational_units_sites_site_id");
+
                     b.Navigation("Manager");
 
                     b.Navigation("ParentUnit");
+
+                    b.Navigation("Site");
                 });
 
             modelBuilder.Entity("Domain.Entities.Organizations.WorkLocation", b =>
@@ -2362,7 +2462,15 @@ namespace Infrastructure.Database.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_users_organizational_units_organizational_unit_id");
 
+                    b.HasOne("Domain.Entities.Organizations.Site", "Site")
+                        .WithMany("Users")
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_users_sites_site_id");
+
                     b.Navigation("OrganizationalUnit");
+
+                    b.Navigation("Site");
                 });
 
             modelBuilder.Entity("Domain.Entities.Users.UserPermission", b =>
@@ -2437,6 +2545,13 @@ namespace Infrastructure.Database.Migrations
             modelBuilder.Entity("Domain.Entities.Organizations.Shift", b =>
                 {
                     b.Navigation("Employees");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Organizations.Site", b =>
+                {
+                    b.Navigation("OrganizationalUnits");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("Domain.Entities.Users.Permission", b =>

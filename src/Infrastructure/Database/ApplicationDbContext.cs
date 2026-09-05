@@ -27,6 +27,8 @@ public sealed class ApplicationDbContext(
 
     public DbSet<WorkLocation> WorkLocations { get; set; }
 
+    public DbSet<Site> Sites { get; set; }
+
     public DbSet<Shift> Shifts { get; set; }
 
     public DbSet<Holiday> Holidays { get; set; }

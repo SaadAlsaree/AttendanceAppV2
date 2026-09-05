@@ -1,6 +1,7 @@
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Domain.Entities.Organizations;
 using Domain.Entities.Users;
 using Domain.Enums;
 using Domain.Users;
@@ -27,6 +28,13 @@ internal sealed class SignUpCommandHandler(
             return Result.Failure<ApiResponse<SignUpResponse>>(UserErrors.UserLoginAlreadyExists(command.UserLogin));
         }
 
+        // A SiteSupervisor draws its entire access scope from its site; creating one without a site
+        // would produce an account that can sign in but see nothing.
+        if (command.Role == Role.SiteSupervisor && !command.SiteId.HasValue)
+        {
+            return Result.Failure<ApiResponse<SignUpResponse>>(SiteErrors.NoSiteAssigned);
+        }
+
         // Hash the password
         string passwordHash = passwordHasher.Hash(command.Password);
 
@@ -42,7 +50,8 @@ internal sealed class SignUpCommandHandler(
             Status = UserStatus.Active,
             CreatedAt = dateTimeProvider.GetUtcNow(),
             LastLoginDate = dateTimeProvider.GetUtcNow(),
-            OrganizationalUnitId = command.OrganizationalUnitId
+            OrganizationalUnitId = command.OrganizationalUnitId,
+            SiteId = command.SiteId
         };
 
         // Add user to context

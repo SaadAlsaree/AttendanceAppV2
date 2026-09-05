@@ -14,4 +14,6 @@ public class UserInfoDto
     public UserStatus Status { get; set; }
     public Guid? OrganizationalUnitId { get; set; }
     public string? OrganizationalUnitName { get; set; }
+    public Guid? SiteId { get; set; }
+    public string? SiteName { get; set; }
 }

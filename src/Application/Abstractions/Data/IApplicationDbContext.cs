@@ -1,4 +1,4 @@
-using Domain.Entities.Devices;
+﻿using Domain.Entities.Devices;
 using Domain.Entities.Organizations;
 using Domain.Entities.Users;
 using Domain.Todos;
@@ -21,6 +21,8 @@ public interface IApplicationDbContext
     DbSet<EmployeeWeeklyShift> EmployeeWeeklyShifts { get; }
     DbSet<OrganizationalUnit> OrganizationalUnits { get; }
     DbSet<WorkLocation> WorkLocations { get; }
+
+    DbSet<Site> Sites { get; }
     DbSet<Shift> Shifts { get; }
     DbSet<Holiday> Holidays { get; }
     DbSet<AttendanceSchedule> AttendanceSchedules { get; }

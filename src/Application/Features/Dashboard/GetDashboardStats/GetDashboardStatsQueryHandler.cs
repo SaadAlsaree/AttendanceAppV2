@@ -1,4 +1,4 @@
-using Application.Abstractions.Authentication;
+﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Application.Models;
@@ -19,7 +19,7 @@ internal sealed class GetDashboardStatsQueryHandler(
     IDateTimeProvider dateTimeProvider)
     : IQueryHandler<GetDashboardStatsQuery, DashboardStatsResponse>
 {
-    // When set (OrgSupervisor only) every section is constrained to this unit tree.
+    // When set (scoped roles only) every section is constrained to these units.
     // Null for Admin/SuperAdmin, which stay global.
     private IEnumerable<Guid>? _scopedUnitIds;
 
@@ -27,10 +27,11 @@ internal sealed class GetDashboardStatsQueryHandler(
     {
         try
         {
-            // OrgSupervisor: constrain the whole dashboard to the caller's own unit tree.
-            // (Keyed to OrgSupervisor only — SuperAdmin often has no unit and must stay global.)
+            // Scoped roles: constrain the whole dashboard to the caller's accessible units —
+            // the OrgSupervisor's unit tree, or the SiteSupervisor's explicit site membership.
+            // (Keyed to these roles by name — SuperAdmin often has no unit and must stay global.)
             UserInfoDto currentUser = await userContext.GetUserAsync();
-            if (currentUser.Role == Role.OrgSupervisor)
+            if (currentUser.Role is Role.OrgSupervisor or Role.SiteSupervisor)
             {
                 IEnumerable<Guid> accessibleUnitIds = await hasPermission.GetAccessibleUnitIdsAsync(cancellationToken);
                 if (query.DepartmentId.HasValue && !accessibleUnitIds.Contains(query.DepartmentId.Value))

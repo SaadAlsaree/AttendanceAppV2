@@ -33,6 +33,30 @@ internal sealed class HasPermission : IHasPermission
             Guid userId = user.Id;
             HashSet<Guid> accessibleUnitIds = new();
 
+            // A SiteSupervisor is scoped by their site's EXPLICIT unit list. Membership is
+            // non-transitive, so this path must never descend the tree — a unit being in the site
+            // says nothing about its children. It also deliberately ignores the user's own
+            // OrganizationalUnitId: a row may still carry one from a previous role, and unioning it
+            // would silently widen the scope past the site.
+            if (user.Role == Role.SiteSupervisor)
+            {
+                if (user.SiteId is not { } siteId)
+                {
+                    // No site assigned -> no scope. Every consumer treats an empty set as "nothing
+                    // is accessible", so the role degrades closed rather than open.
+                    return accessibleUnitIds;
+                }
+
+                List<Guid> siteUnitIds = await _context.OrganizationalUnits
+                    .AsNoTracking()
+                    .Where(ou => ou.SiteId == siteId && !ou.IsDeleted)
+                    .Select(ou => ou.Id)
+                    .ToListAsync(cancellationToken);
+
+                accessibleUnitIds.UnionWith(siteUnitIds);
+                return accessibleUnitIds;
+            }
+
             // Get user's organizational unit
             var userUnit = await _context.Users
                 .Where(u => u.Id == userId)
@@ -71,6 +95,15 @@ internal sealed class HasPermission : IHasPermission
         if (user.Role is Role.Admin or Role.SuperAdmin)
         {
             return true;
+        }
+
+        // SiteSupervisor is strictly view-only. Without this deny it would fall through to the
+        // accessible-unit check below and be authorized for every write inside its own site. This
+        // is the one structural backstop against the role being added by mistake to a write
+        // endpoint's allowedRoles — there are 91 of those files, each with its own copy-pasted list.
+        if (user.Role == Role.SiteSupervisor)
+        {
+            return false;
         }
 
         // Everyone else is bound to their accessible unit tree. An employee with no

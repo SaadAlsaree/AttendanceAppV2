@@ -5,7 +5,17 @@ public interface IHasPermission
 
 
     /// <summary>
-    /// Gets all organizational unit IDs that the current user can access (their unit + all sub-units in hierarchy)
+    /// Gets all organizational unit IDs that the current user can access.
+    /// <para>
+    /// For most roles this is their own unit plus every sub-unit in the hierarchy. For
+    /// <c>SiteSupervisor</c> it is instead the explicit unit list of their assigned site — a flat
+    /// set that is NOT expanded down the tree, and that ignores the user's own
+    /// <c>OrganizationalUnitId</c> entirely.
+    /// </para>
+    /// <para>
+    /// Returns an empty set when the user has no scope (no unit, or no site). Callers must treat
+    /// that as "nothing is accessible", never as "everything".
+    /// </para>
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of unit IDs the user can access</returns>
@@ -13,8 +23,9 @@ public interface IHasPermission
 
     /// <summary>
     /// Whether the current user may perform write operations on the given employee.
-    /// Admin/SuperAdmin can manage anyone; other roles are restricted to employees
-    /// whose organizational unit falls within their accessible unit tree.
+    /// Admin/SuperAdmin can manage anyone; <c>SiteSupervisor</c> is view-only and is always denied;
+    /// other roles are restricted to employees whose organizational unit falls within their
+    /// accessible unit tree.
     /// </summary>
     /// <param name="employeeId">The employee being written to</param>
     /// <param name="cancellationToken">Cancellation token</param>

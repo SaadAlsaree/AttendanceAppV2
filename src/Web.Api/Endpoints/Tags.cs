@@ -16,4 +16,5 @@ public static class Tags
     public const string AttendanceLogs = "AttendanceLogs";
     public const string Dashboard = "Dashboard";
     public const string Users = "Users";
+    public const string Sites = "Sites";
 }

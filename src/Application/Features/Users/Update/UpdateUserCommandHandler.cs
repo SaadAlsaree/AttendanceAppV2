@@ -1,4 +1,4 @@
-using Application.Abstractions.Authentication;
+﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Entities.Organizations;
@@ -51,10 +51,31 @@ internal sealed class UpdateUserCommandHandler(
             }
         }
 
+        // Check if site exists (if provided)
+        if (command.SiteId.HasValue)
+        {
+            bool siteExists = await context.Sites
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == command.SiteId.Value && !s.IsDeleted, cancellationToken);
+
+            if (!siteExists)
+            {
+                return Result.Failure(SiteErrors.NotFound(command.SiteId.Value));
+            }
+        }
+
         // Verify the role is a valid enum value
         if (!Enum.IsDefined<Role>(command.Role))
         {
             return Result.Failure(UserErrors.InvalidRole());
+        }
+
+        // A SiteSupervisor's entire access scope comes from their site. Without one they would be
+        // able to sign in but see nothing, so refuse to create that state rather than letting it
+        // look like a data bug later.
+        if (command.Role == Role.SiteSupervisor && !command.SiteId.HasValue)
+        {
+            return Result.Failure(SiteErrors.NoSiteAssigned);
         }
 
         // Verify the status is a valid enum value
@@ -71,6 +92,7 @@ internal sealed class UpdateUserCommandHandler(
         user.Status = command.Status;
         user.IsActive = command.IsActive;
         user.OrganizationalUnitId = command.OrganizationalUnitId;
+        user.SiteId = command.SiteId;
         user.LastUpdatedAt = dateTimeProvider.GetUtcNow();
         user.LastUpdatedBy = userContext.UserId;
 

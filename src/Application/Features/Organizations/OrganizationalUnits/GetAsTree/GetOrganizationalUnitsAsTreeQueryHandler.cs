@@ -85,6 +85,14 @@ internal sealed class GetOrganizationalUnitsAsTreeQueryHandler(IApplicationDbCon
                 // This unit has a parent, add it as a child
                 parent.Children.Add(unit);
             }
+            else
+            {
+                // The parent is outside the caller's scope, so it was filtered out before we got
+                // here. Surface the unit as a root rather than dropping it — without this branch a
+                // SiteSupervisor, whose accessible units are a flat scattered set with their
+                // parents excluded by definition, would receive an empty tree.
+                rootUnits.Add(unit);
+            }
         }
 
         return rootUnits;

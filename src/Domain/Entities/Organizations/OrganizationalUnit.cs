@@ -17,9 +17,16 @@ public sealed class OrganizationalUnit : AuditableEntity<Guid>
     public int? UnitLevel { get; set; }
     public Guid? ManagerId { get; set; }
 
+    /// <summary>
+    /// The site this unit belongs to, if any. Membership is explicit: setting this on a unit does
+    /// NOT place its <see cref="ChildUnits"/> in the same site.
+    /// </summary>
+    public Guid? SiteId { get; set; }
+
     // Navigation Properties
     public OrganizationalUnit? ParentUnit { get; set; }
     public Employee? Manager { get; set; }
+    public Site? Site { get; set; }
     public List<OrganizationalUnit> ChildUnits { get; set; } = new List<OrganizationalUnit>();
     public List<Employee> Employees { get; set; } = new List<Employee>();
     public List<User> Users { get; set; } = new List<User>();
