@@ -15,6 +15,9 @@ using Web.Api.Extensions;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+// Do not advertise the server implementation (pentest finding 14 - version disclosure).
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+
 builder.Host.UseSerilog((context, loggerConfig) => loggerConfig.ReadFrom.Configuration(context.Configuration));
 
 builder.Services
